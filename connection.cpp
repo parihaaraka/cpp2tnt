@@ -513,7 +513,7 @@ void connection::read()
 
         _greeting.assign(_receive_buffer.data(), _receive_buffer.size());
 
-        if (!_cs_parts.user.empty())
+        if (!_cs_parts.user.empty() || _cs_parts.user != "guest" || !_cs_parts.password.empty())
         {
             _async_stage = async_stage::auth;
             encode_auth_request(_send_buffer, // skip _output buffer

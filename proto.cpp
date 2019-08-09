@@ -58,24 +58,17 @@ void encode_auth_request(wtf_buffer &buf,
     buf.end += cs_parts.user.size();
 
     buf.end = mp_encode_uint(buf.end, body_type::TUPLE);
-    if (!cs_parts.password.empty())
-    {
-        string_view b64_salt = {
-            greeting.data() + tnt::VERSION_SIZE,
-            tnt::SCRAMBLE_SIZE + tnt::SALT_SIZE
-        };
-        char salt[64];
-        buf.end = mp_encode_array(buf.end, 2);
-        buf.end = mp_encode_str(buf.end, "chap-sha1", 9);
-        buf.end = mp_encode_strl(buf.end, tnt::SCRAMBLE_SIZE);
-        base64_decode(b64_salt.data(), tnt::SALT_SIZE, salt, 64);
-        scramble_prepare(buf.end, salt, cs_parts.password);
-        buf.end += tnt::SCRAMBLE_SIZE;
-    }
-    else
-    {
-        buf.end = mp_encode_array(buf.end, 0);
-    }
+    string_view b64_salt = {
+        greeting.data() + tnt::VERSION_SIZE,
+        tnt::SCRAMBLE_SIZE + tnt::SALT_SIZE
+    };
+    char salt[64];
+    buf.end = mp_encode_array(buf.end, 2);
+    buf.end = mp_encode_str(buf.end, "chap-sha1", 9);
+    buf.end = mp_encode_strl(buf.end, tnt::SCRAMBLE_SIZE);
+    base64_decode(b64_salt.data(), tnt::SALT_SIZE, salt, 64);
+    scramble_prepare(buf.end, salt, cs_parts.password);
+    buf.end += tnt::SCRAMBLE_SIZE;
 
     uint32_t size = static_cast<uint32_t>(buf.size());
     char *size_place = mp_store_u8(size_header, 0xce); // 0xce -> unit32
