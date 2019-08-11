@@ -32,14 +32,16 @@
 
 /** @file */
 
-#include <cstdint>
 #include <string_view>
-#include "cs_parser.h"
-#include "wtf_buffer.h"
+
+class wtf_buffer;
 
 /// Tarantool connector scope
 namespace tnt
 {
+
+class connection;
+struct cs_parts;
 
 constexpr int SCRAMBLE_SIZE =  20;
 constexpr int GREETING_SIZE = 128;
@@ -47,7 +49,7 @@ constexpr int VERSION_SIZE  =  64;
 constexpr int SALT_SIZE     =  44;
 
 /// Request types
-enum request_type
+enum class request_type : uint8_t
 {
     SELECT    =  1,
     INSERT    =  2,
@@ -66,29 +68,29 @@ enum request_type
 };
 
 /// Request body field types (keys)
-enum body_type
+enum body_field
 {
-    SPACE        = 0x10,
-    INDEX        = 0x11,
-    LIMIT        = 0x12,
-    OFFSET       = 0x13,
-    ITERATOR     = 0x14,
-    INDEX_BASE   = 0x15,
-    KEY          = 0x20,
-    TUPLE        = 0x21,
-    FUNCTION     = 0x22,
-    USERNAME     = 0x23,
-    SERVER_UUID  = 0x24,
-    CLUSTER_UUID = 0x25,
-    VCLOCK       = 0x26,
-    EXPRESSION   = 0x27,
-    OPS          = 0x28,
-    SQL_TEXT     = 0x40,
-    SQL_BIND     = 0x41,
+    SPACE         = 0x10,
+    INDEX         = 0x11,
+    LIMIT         = 0x12,
+    OFFSET        = 0x13,
+    ITERATOR      = 0x14,
+    INDEX_BASE    = 0x15,
+    KEY           = 0x20,
+    TUPLE         = 0x21,
+    FUNCTION_NAME = 0x22,
+    USER_NAME     = 0x23,
+    SERVER_UUID   = 0x24,
+    CLUSTER_UUID  = 0x25,
+    VCLOCK        = 0x26,
+    EXPRESSION    = 0x27,
+    OPS           = 0x28,
+    SQL_TEXT      = 0x40,
+    SQL_BIND      = 0x41,
 };
 
 /// Response body field types (keys)
-enum response_type
+enum response_field
 {
     DATA      = 0x30,
     ERROR     = 0x31,
@@ -97,7 +99,7 @@ enum response_type
 };
 
 /// Request/response header field types (keys)
-enum header_type
+enum header_field
 {
     CODE      = 0x00,
     SYNC      = 0x01,
@@ -130,10 +132,12 @@ struct unified_header
     operator bool() const noexcept { return schema_id != std::numeric_limits<uint32_t>::max(); }
 };
 
-void encode_auth_request(wtf_buffer &buf,
-                         const cs_parts &cs_parts,
-                         std::string_view greeting,
-                         uint64_t request_id);
+void encode_header(connection &cn, request_type rtype) noexcept;
+void encode_auth_request(connection &cn, std::string_view user, std::string_view password);
+
+std::size_t begin_call(connection &cn, std::string_view fn_name);
+void finalize_request(connection &cn, size_t head_offset);
+
 unified_header decode_unified_header(const char **ptr);
 std::string_view string_from_map(const char **ptr, uint32_t key);
 

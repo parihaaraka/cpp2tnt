@@ -8,7 +8,7 @@ public:
     unique_socket(int fd = -1);
     unique_socket(unique_socket &&src);
     unique_socket& operator=(unique_socket &&src);
-    unique_socket (const unique_socket &) = delete;
+    unique_socket(const unique_socket &) = delete;
     unique_socket& operator=(const unique_socket &) = delete;
     ~unique_socket();
     operator bool() const noexcept;

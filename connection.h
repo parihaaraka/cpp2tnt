@@ -46,7 +46,7 @@ private:
      *  (to change current db user while stay connected) */
     std::string _greeting;
     cs_parts _cs_parts;
-    int _idle_seconds_counter = -1;     ///< used only while connecting (to stop on timeout)
+    int _idle_seconds_counter = -1;     ///< timeout counter
 
     /** The connection must be notified when _input_buffer was processed
      *  by caller completely. An external worker must not use _input_buffer
@@ -56,14 +56,15 @@ private:
     wtf_buffer _receive_buffer;         ///< recv destination (partial responce permitted)
     bool _caller_idle = true;           ///< true - connector may work with _input_buffer, false - caller
     size_t _last_received_head_offset = 0;
-    size_t _detected_response_size = 0; ///< current response size (to detect it being fetched en bloc)
+    size_t _detected_response_size = 0; ///< current response size (to detect it's being fetched en bloc)
     void process_receive_buffer();
     void pass_response_to_caller();
 
     wtf_buffer _output_buffer;          ///< actually corked buffer
     wtf_buffer _send_buffer;            ///< sending data
-    // send buffer never reallocates while sending, so no need to use offset instead of pointer
-    char *_next_to_send = nullptr;
+    // Send buffer never reallocates while sending in progress,
+    // so no need to use offset instead of pointer.
+    char *_next_to_send;
     uint64_t _request_id = 0;           ///< sync_id in terms of tnt
     bool _is_corked = false;
     size_t _uncorked_size = 0;          ///< size of data within output buffer
@@ -109,8 +110,9 @@ public:
     int socket_handle() const noexcept;
     std::string_view greeting() const noexcept;
     /** Get buffer to put requests in. A caller must take care of free space
-     * availability by calling wtf_buffer::reserve() if needed */
+     * availability by calling wtf_buffer::reserve() if needed. */
     wtf_buffer& output_buffer() noexcept;
+    uint64_t next_request_id() noexcept;
 
     /** Prevent further requests from being sent immediately upon creation. */
     void cork() noexcept;
@@ -170,6 +172,7 @@ public:
      * this option (for a while).
      */
     connection& on_notify_request(decltype(_on_notify_request) &&handler);
+
 };
 
 } // namespace tnt

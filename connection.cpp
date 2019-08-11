@@ -31,6 +31,7 @@ using namespace std;
 connection::connection(std::string_view connection_string)
     : _current_cs(connection_string)
 {
+    _next_to_send = _send_buffer.data();
     _receive_buffer.on_clear = [this](){
         _last_received_head_offset = 0;
         _detected_response_size = 0;
@@ -112,10 +113,10 @@ void connection::process_receive_buffer()
                 return;
             }
 
-            handle_error(string_from_map(&header_pos, response_type::ERROR), error::auth, h.code);
+            handle_error(string_from_map(&header_pos, response_field::ERROR), error::auth, h.code);
             _receive_buffer.clear();
             close(false);
-            // do not reconect on authentication error
+            _idle_seconds_counter = 0; // reconnect soon
         }
         else if (_caller_idle)
         {
@@ -382,6 +383,11 @@ wtf_buffer& connection::output_buffer() noexcept
     return _output_buffer;
 }
 
+uint64_t connection::next_request_id() noexcept
+{
+    return _request_id++;
+}
+
 void connection::cork() noexcept
 {
     _is_corked = true;
@@ -406,6 +412,7 @@ bool connection::flush() noexcept
         _send_buffer.swap(_output_buffer);
         _next_to_send = _send_buffer.data();
         _uncorked_size = 0;
+        write();
         return true;
     }
 
@@ -512,22 +519,17 @@ void connection::read()
             return; // continue to read
 
         _greeting.assign(_receive_buffer.data(), _receive_buffer.size());
+        _receive_buffer.clear();
 
         if (!_cs_parts.user.empty() || _cs_parts.user != "guest" || !_cs_parts.password.empty())
         {
             _async_stage = async_stage::auth;
-            encode_auth_request(_send_buffer, // skip _output buffer
-                                _cs_parts,
-                                _greeting,
-                                _request_id++);
-            _next_to_send = _send_buffer.data();
-            _receive_buffer.clear();
-            write();
+            encode_auth_request(*this, _cs_parts.user, _cs_parts.password);
+            flush();
         }
         else
         {
             // no need to authenticate
-            _receive_buffer.clear();
             _async_stage = async_stage::idle;
             _idle_seconds_counter = -1;
             if (_connected_cb)
@@ -598,10 +600,14 @@ void connection::write()
             if (bytes_to_send < _send_buffer.size())
             {
                 size_t corked_tail_size = _send_buffer.size() - bytes_to_send;
-                memmove(_output_buffer.data(), _send_buffer.data() + bytes_to_send, corked_tail_size);
+                memcpy(_output_buffer.data(), _send_buffer.data() + bytes_to_send, corked_tail_size);
                 _output_buffer.resize(corked_tail_size);
                 _send_buffer.resize(bytes_to_send);
             }
+        }
+        else
+        {
+            _next_to_send += r;
         }
     }
 

@@ -3,6 +3,8 @@
 // ev++.h does not compile in C++17 mode
 // It has a lack of noticeable advantages over plain C api so lets use the last one.
 #include <ev.h>
+#include "proto.h"
+#include "msgpuck/msgpuck.h"
 
 using namespace std;
 
@@ -125,8 +127,12 @@ int main(int argc, char *argv[])
 
     cn.on_opened([&cn](){
         cout << "connected" << endl;
-        auto buf = cn.output_buffer();
-        // TODO
+
+        size_t head_offset = tnt::begin_call(cn, "box.info.memory");
+        auto &buf = cn.output_buffer();
+        buf.end = mp_encode_array(buf.end, 0);
+        tnt::finalize_request(cn, head_offset);
+        cn.flush();
     });
 
     cn.on_closed([](){
@@ -136,9 +142,13 @@ int main(int argc, char *argv[])
     cn.on_notify_request(bind(ev_async_send, loop, &async_notifier));
 
     cn.on_response([](wtf_buffer &buf){
-        // TMP
         cout << buf.size() << " bytes acquired:" << endl;
         echo_buf(buf.data(), buf.end);
+
+        const char *header_pos = buf.data() + 5;
+        auto h = tnt::decode_unified_header(&header_pos);
+        if (h && h.code)
+            cout << "error: " << string_from_map(&header_pos, tnt::response_field::ERROR) << endl;
     });
 
     cn.open();
