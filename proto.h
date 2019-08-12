@@ -141,6 +141,9 @@ void finalize_request(connection &cn, size_t head_offset);
 unified_header decode_unified_header(const char **ptr);
 std::string_view string_from_map(const char **ptr, uint32_t key);
 
+connection& operator<< (connection& cn, int64_t var);
+connection& operator<< (connection& cn, uint64_t var);
+
 } // namespace tnt
 
 #endif // TNT_PROTO_H
@@ -185,4 +188,38 @@ ce = uint32, 0x49 = 77 bytes total (+5 this header)
     31   = int(49)             (ERROR)
       db = str32, 0x0000002f = 47 bytes long
            49 6e .... (Incorrect password supplied for user 'highkick')
+*/
+
+/* box.info.memory():
+ce 00 00 00 51 83 00 ce  00 00 00 00 01 cf 00 00
+00 00 00 00 00 01 05 ce  00 00 00 9b 81 30 dd 00
+00 00 01 86 a5 63 61 63  68 65 00 a4 64 61 74 61
+ce 00 02 0f 90 a2 74 78  00 a3 6c 75 61 ce 00 1f
+14 d9 a3 6e 65 74 ce 00  0e 40 00 a5 69 6e 64 65
+78 ce 00 28 00 00
+
+81 = 1 item map
+    30  = DATA
+    dd  = array
+        00 00 00 01 - 1 item
+        86 = map of 6 items
+            a5 63 61 63 68 65 = 'cache'
+              00
+            a4 64 61 74 61    = 'data'
+              ce  00 02 0f 90
+            a2 74 78          = 'tx'
+              00
+            a3 6c 75 61       = 'lua'
+              ce  00 1f 14 d9
+            a3 6e 65 74       = 'net'
+              ce  00 0e 40 00
+            a5 69 6e 64 65 78 = 'index'
+              ce  00 28 00 00
+
+cache: 0
+data: 135056
+tx: 0
+lua: 2247129
+net: 933888
+index: 2621440
 */

@@ -63,7 +63,7 @@ void connection::process_receive_buffer()
         if (!_detected_response_size && orphaned_bytes >= 5) // length part of standard tnt header
         {
             const char *head = _receive_buffer.data() + _last_received_head_offset;
-            _detected_response_size = mp_decode_uint(&head);
+            _detected_response_size = mp_decode_uint(&head) + 5;
         }
 
         if (_detected_response_size)
@@ -75,7 +75,7 @@ void connection::process_receive_buffer()
                 if (orphaned_bytes >= 5) // next response found
                 {
                     const char *head = _receive_buffer.data() + _last_received_head_offset;
-                    _detected_response_size = mp_decode_uint(&head);
+                    _detected_response_size = mp_decode_uint(&head) + 5;
                     continue;
                 }
                 else

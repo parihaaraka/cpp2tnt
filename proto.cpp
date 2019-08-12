@@ -165,4 +165,18 @@ void finalize_request(connection &cn, size_t head_offset)
     mp_store_u32(size_place, static_cast<uint32_t>(size - 5));
 }
 
+connection& operator<<(connection &cn, int64_t var)
+{
+    auto &buf = cn.output_buffer();
+    buf.end = mp_encode_int(buf.data(), var);
+    return cn;
+}
+
+connection &operator<<(connection &cn, uint64_t var)
+{
+    auto &buf = cn.output_buffer();
+    buf.end = mp_encode_uint(buf.data(), var);
+    return cn;
+}
+
 } // namespace tnt
