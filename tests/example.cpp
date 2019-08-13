@@ -141,14 +141,15 @@ int main(int argc, char *argv[])
 
     cn.on_notify_request(bind(ev_async_send, loop, &async_notifier));
 
-    cn.on_response([](wtf_buffer &buf){
+    cn.on_response([&cn](wtf_buffer &buf){
         cout << buf.size() << " bytes acquired:" << endl;
         echo_buf(buf.data(), buf.end);
 
         const char *header_pos = buf.data() + 5;
         auto h = tnt::decode_unified_header(&header_pos);
         if (h && h.code)
-            cout << "error: " << string_from_map(&header_pos, tnt::response_field::ERROR) << endl;
+            cout << "error: " << string_from_map(header_pos, tnt::response_field::ERROR) << endl;
+        cn.input_processed();
     });
 
     cn.open();

@@ -105,26 +105,32 @@ unified_header decode_unified_header(const char **p)
     return h;
 }
 
-string_view string_from_map(const char **p, uint32_t key)
+const char* bin_from_map(const char *ptr, uint32_t key)
 {
-    if (mp_typeof(**p) == MP_MAP)
+    if (mp_typeof(*ptr) == MP_MAP)
     {
-        uint32_t n = mp_decode_map(p);
+        uint32_t n = mp_decode_map(&ptr);
         while (n-- > 0)
         {
-            uint32_t k = static_cast<uint32_t>(mp_decode_uint(p));
+            uint32_t k = static_cast<uint32_t>(mp_decode_uint(&ptr));
             if (k == key)
-            {
-                if (mp_typeof(**p) != MP_STR)
-                    break;
-                uint32_t elen = 0;
-                const char *value = mp_decode_str(p, &elen);
-                return {value, elen};
-            }
-            mp_next(p);
+                return ptr;
+            mp_next(&ptr);
         }
     }
-    return {*p, 0};
+    return nullptr;
+}
+
+string_view string_from_map(const char *ptr, uint32_t key)
+{
+    auto data = bin_from_map(ptr, key);
+    if (data && mp_typeof(*data) == MP_STR)
+    {
+        uint32_t elen = 0;
+        const char *value = mp_decode_str(&data, &elen);
+        return {value, elen};
+    }
+    return {ptr, 0}; // avoid data() to be nullptr
 }
 
 void encode_header(connection &cn, request_type rtype) noexcept
@@ -168,7 +174,10 @@ void finalize_request(connection &cn, size_t head_offset)
 connection& operator<<(connection &cn, int64_t var)
 {
     auto &buf = cn.output_buffer();
-    buf.end = mp_encode_int(buf.data(), var);
+    if (var < 0)
+        buf.end = mp_encode_int(buf.data(), var);
+    else
+        buf.end = mp_encode_uint(buf.data(), static_cast<uint64_t>(var));
     return cn;
 }
 

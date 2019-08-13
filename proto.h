@@ -139,7 +139,8 @@ std::size_t begin_call(connection &cn, std::string_view fn_name);
 void finalize_request(connection &cn, size_t head_offset);
 
 unified_header decode_unified_header(const char **ptr);
-std::string_view string_from_map(const char **ptr, uint32_t key);
+const char* bin_from_map(const char *ptr, uint32_t key);
+std::string_view string_from_map(const char *ptr, uint32_t key);
 
 connection& operator<< (connection& cn, int64_t var);
 connection& operator<< (connection& cn, uint64_t var);

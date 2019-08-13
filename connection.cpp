@@ -113,7 +113,7 @@ void connection::process_receive_buffer()
                 return;
             }
 
-            handle_error(string_from_map(&header_pos, response_field::ERROR), error::auth, h.code);
+            handle_error(string_from_map(header_pos, response_field::ERROR), error::auth, h.code);
             _receive_buffer.clear();
             close(false);
             _idle_seconds_counter = 0; // reconnect soon
@@ -138,8 +138,8 @@ void connection::pass_response_to_caller()
         _receive_buffer.resize(orphaned_bytes);
         memcpy(_receive_buffer.data(), _input_buffer.data() + _last_received_head_offset, orphaned_bytes);
         _input_buffer.resize(_input_buffer.size() - orphaned_bytes);
-        _last_received_head_offset = 0;
     }
+    _last_received_head_offset = 0;
 
     if (_response_cb)
     {
@@ -381,6 +381,11 @@ string_view connection::greeting() const noexcept
 wtf_buffer& connection::output_buffer() noexcept
 {
     return _output_buffer;
+}
+
+uint64_t connection::last_request_id() const noexcept
+{
+    return _request_id - 1;
 }
 
 uint64_t connection::next_request_id() noexcept

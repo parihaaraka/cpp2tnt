@@ -112,6 +112,7 @@ public:
     /** Get buffer to put requests in. A caller must take care of free space
      * availability by calling wtf_buffer::reserve() if needed. */
     wtf_buffer& output_buffer() noexcept;
+    uint64_t last_request_id() const noexcept;
     uint64_t next_request_id() noexcept;
 
     /** Prevent further requests from being sent immediately upon creation. */
