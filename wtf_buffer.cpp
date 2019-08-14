@@ -25,6 +25,11 @@ char *wtf_buffer::data() noexcept
     return _buf.data();
 }
 
+const char *wtf_buffer::data() const noexcept
+{
+    return _buf.data();
+}
+
 void wtf_buffer::reserve(size_t size)
 {
     size_t s = this->size();

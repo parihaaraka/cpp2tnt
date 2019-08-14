@@ -13,6 +13,7 @@ public:
     size_t size() const noexcept;
     size_t available() const noexcept;
     char* data() noexcept;
+    const char* data() const noexcept;
     void reserve(size_t size);
     void resize(size_t size);
     void clear() noexcept;
