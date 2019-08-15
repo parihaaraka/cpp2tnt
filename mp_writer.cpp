@@ -94,6 +94,13 @@ void mp_writer::encode_auth_request(std::string_view user, std::string_view pass
     end();
 }
 
+void mp_writer::encode_ping_request()
+{
+    encode_header(tnt::request_type::PING);
+    _buf.end = mp_encode_map(_buf.end, 0);
+    end();
+}
+
 void mp_writer::begin_call(string_view fn_name)
 {
     encode_header(tnt::request_type::CALL);
@@ -105,24 +112,25 @@ void mp_writer::begin_call(string_view fn_name)
     // a caller must append an array of arguments (zero-length one if void)
 }
 
-void mp_writer::begin_array(uint32_t max_size)
+void mp_writer::begin_array(uint32_t max_cardinality)
 {
-    if (max_size)
-        _opened_containers.push({_buf.size(), max_size});
-    _buf.end = mp_encode_array(_buf.end, max_size);
+    if (max_cardinality)
+        _opened_containers.push({_buf.size(), max_cardinality});
+    _buf.end = mp_encode_array(_buf.end, max_cardinality);
 }
 
-void mp_writer::begin_map(uint32_t max_size)
+void mp_writer::begin_map(uint32_t max_cardinality)
 {
-    if (max_size)
-        _opened_containers.push({_buf.size(), max_size * 2});
-    _buf.end = mp_encode_map(_buf.end, max_size);
+    if (max_cardinality)
+        _opened_containers.push({_buf.size(), max_cardinality * 2});
+    _buf.end = mp_encode_map(_buf.end, max_cardinality);
 }
 
 void mp_writer::end()
 {
     if (_opened_containers.empty())
         throw range_error("no container to finalize");
+
     auto &c = _opened_containers.pop();
     char *head = _buf.data() + c.head_offset;
 
@@ -141,27 +149,41 @@ void mp_writer::end()
     // mp_encode_array() may reduce header's size if actual cardinality
     // is smaller than initial value, so we update the header directly.
 
-    uint32_t num_bytes = 0;
+    uint32_t max_num_bytes = 0;
     uint32_t actual_cardinality = c.items_count;
     auto container_type = mp_typeof(*head);
+
     if (container_type == MP_ARRAY)
     {
+        if (actual_cardinality == c.max_cardinality)
+            return;
+
         // get current header size
-        num_bytes = mp_sizeof_array(c.max_cardinality);
-        if (num_bytes == 1)
+        max_num_bytes = mp_sizeof_array(c.max_cardinality);
+
+        if (actual_cardinality > c.max_cardinality && mp_sizeof_array(actual_cardinality) > max_num_bytes)
+            throw overflow_error("array header size exceeded");
+
+        if (max_num_bytes == 1)
         {
             // replace 1-byte header with new size
             mp_encode_array(head, actual_cardinality);
             return;
         }
     }
-    else if (container_type == MP_ARRAY)
+    else if (container_type == MP_MAP)
     {
-        // map cardinality
-        actual_cardinality = c.items_count / 2;
+        actual_cardinality = c.items_count / 2; // map cardinality
+        if (actual_cardinality == c.max_cardinality)
+            return;
+
         // get current header size
-        num_bytes = mp_sizeof_map(c.max_cardinality);
-        if (num_bytes == 1)
+        max_num_bytes = mp_sizeof_map(c.max_cardinality);
+
+        if (actual_cardinality > c.max_cardinality && mp_sizeof_map(actual_cardinality) > max_num_bytes)
+            throw overflow_error("map header size exceeded");
+
+        if (max_num_bytes == 1)
         {
             // replace 1-byte header with new size
             mp_encode_map(head, actual_cardinality);
@@ -173,7 +195,7 @@ void mp_writer::end()
         throw runtime_error("unexpected container header");
     }
 
-    switch (num_bytes)
+    switch (max_num_bytes)
     {
     case 3:
         mp_store_u16(++head, static_cast<uint16_t>(actual_cardinality));
@@ -184,5 +206,15 @@ void mp_writer::end()
     default:
         throw runtime_error("wtf?");
     }
+}
+
+mp_writer& mp_writer::operator<<(const string_view &val)
+{
+    if (val.size() > std::numeric_limits<uint32_t>::max())
+        throw overflow_error("too long string");
+    _buf.end = mp_encode_str(_buf.end, val.data(), static_cast<uint32_t>(val.size()));
+    if (!_opened_containers.empty())
+        ++_opened_containers.top().items_count;
+    return *this;
 }
 

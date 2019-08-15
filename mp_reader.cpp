@@ -128,8 +128,8 @@ mp_reader::operator bool() const noexcept
 
 // ------------------------------------------------------------------------------------------------
 
-mp_map_reader::mp_map_reader(const char *begin, const char *end, size_t size)
-    : mp_reader(begin, end), _size(size)
+mp_map_reader::mp_map_reader(const char *begin, const char *end, size_t cardinality)
+    : mp_reader(begin, end), _cardinality(cardinality)
 {
 }
 
@@ -144,7 +144,7 @@ mp_reader mp_map_reader::operator[](int64_t key) const
 mp_reader mp_map_reader::find(int64_t key) const
 {
     const char *ptr = _begin;
-    auto n = _size;
+    auto n = _cardinality;
     while (n-- > 0)
     {
         bool found = false;
@@ -172,21 +172,21 @@ mp_reader mp_map_reader::find(int64_t key) const
     return {nullptr, nullptr};
 }
 
-size_t mp_map_reader::size() const noexcept
+size_t mp_map_reader::cardinality() const noexcept
 {
-    return _size;
+    return _cardinality;
 }
 
 // ------------------------------------------------------------------------------------------------
 
-mp_array_reader::mp_array_reader(const char *begin, const char *end, size_t size)
-    : mp_reader(begin, end), _size(size)
+mp_array_reader::mp_array_reader(const char *begin, const char *end, size_t cardinality)
+    : mp_reader(begin, end), _cardinality(cardinality)
 {
 }
 
 mp_reader mp_array_reader::operator[](size_t ind) const
 {
-    if (ind >= _size)
+    if (ind >= _cardinality)
         throw out_of_range("index out of range");
 
     const char *ptr = _begin;
@@ -198,7 +198,7 @@ mp_reader mp_array_reader::operator[](size_t ind) const
     return {begin, ptr};
 }
 
-size_t mp_array_reader::size() const noexcept
+size_t mp_array_reader::cardinality() const noexcept
 {
-    return _size;
+    return _cardinality;
 }

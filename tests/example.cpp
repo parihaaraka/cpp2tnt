@@ -160,6 +160,18 @@ int main(int argc, char *argv[])
             cout << "box.info.memory() response content:" << endl;
             echo_buf(ret_data.begin(), ret_data.end());
         };
+        w.encode_ping_request();
+        handlers[cn.last_request_id()] = [](const mp_map_reader &header, const mp_map_reader &body)
+        {
+            int32_t code;
+            header[tnt::header_field::CODE] >> code;
+            if (code)
+            {
+                string err(body[tnt::response_field::ERROR].to_string());
+                throw runtime_error(err);
+            }
+            cout << "pong received" << endl;
+        };
         cn.flush();
     });
 

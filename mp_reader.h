@@ -75,7 +75,7 @@ public:
             }
             throw mp_error("boolean expected", _current_pos);
         }
-        else if constexpr (std::is_integral_v<T>)
+        else
         {
             if (mp_typeof(*_current_pos) == MP_UINT)
             {
@@ -119,11 +119,11 @@ public:
     /// Current parsing position stays unchanged. Returns empty reader if key is not found.
     mp_reader find(int64_t key) const;
     /// The map's cardinality.
-    size_t size() const noexcept;
+    size_t cardinality() const noexcept;
 private:
     friend class mp_reader;
-    mp_map_reader(const char *begin, const char *end, size_t size);
-    size_t _size;
+    mp_map_reader(const char *begin, const char *end, size_t cardinality);
+    size_t _cardinality;
 };
 
 /// messagepack array reader
@@ -135,11 +135,11 @@ public:
     /// Current parsing position stays unchanged. Throw if index out of bounds.
     mp_reader operator[](size_t ind) const;
     /// The array's cardinality.
-    size_t size() const noexcept;
+    size_t cardinality() const noexcept;
 private:
     friend class mp_reader;
-    mp_array_reader(const char *begin, const char *end, size_t size);
-    size_t _size;
+    mp_array_reader(const char *begin, const char *end, size_t cardinality);
+    size_t _cardinality;
 };
 
 #endif // MP_READER_H
