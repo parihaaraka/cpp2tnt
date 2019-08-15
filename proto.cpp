@@ -72,67 +72,6 @@ void encode_auth_request(connection &cn, string_view user, string_view password)
     finalize_request(cn, head_offset);
 }
 
-unified_header decode_unified_header(const char **p)
-{
-    if (mp_typeof(**p) != MP_MAP)
-        return {};
-
-    unified_header h {0, 0, 0};
-    uint32_t n = mp_decode_map(p);
-    while (n-- > 0)
-    {
-        if (mp_typeof(**p) != MP_UINT)
-            return {};
-        uint32_t key = static_cast<uint32_t>(mp_decode_uint(p));
-        if (mp_typeof(**p) != MP_UINT)
-            return {};
-
-        switch (key)
-        {
-        case header_field::SYNC:
-            h.sync = mp_decode_uint(p);
-            break;
-        case header_field::CODE:
-            h.code = static_cast<uint32_t>(mp_decode_uint(p));
-            break;
-        case header_field::SCHEMA_ID:
-            h.schema_id = static_cast<uint32_t>(mp_decode_uint(p));
-            break;
-        default:
-            return {};
-        }
-    }
-    return h;
-}
-
-const char* bin_from_map(const char *ptr, uint32_t key)
-{
-    if (mp_typeof(*ptr) == MP_MAP)
-    {
-        uint32_t n = mp_decode_map(&ptr);
-        while (n-- > 0)
-        {
-            uint32_t k = static_cast<uint32_t>(mp_decode_uint(&ptr));
-            if (k == key)
-                return ptr;
-            mp_next(&ptr);
-        }
-    }
-    return nullptr;
-}
-
-string_view string_from_map(const char *ptr, uint32_t key)
-{
-    auto data = bin_from_map(ptr, key);
-    if (data && mp_typeof(*data) == MP_STR)
-    {
-        uint32_t elen = 0;
-        const char *value = mp_decode_str(&data, &elen);
-        return {value, elen};
-    }
-    return {ptr, 0}; // avoid data() to be nullptr
-}
-
 void encode_header(connection &cn, request_type rtype) noexcept
 {
     auto &buf = cn.output_buffer();
@@ -169,23 +108,6 @@ void finalize_request(connection &cn, size_t head_offset)
 
     char *size_place = mp_store_u8(size_header, 0xce); // 0xce -> unit32
     mp_store_u32(size_place, static_cast<uint32_t>(size - 5));
-}
-
-connection& operator<<(connection &cn, int64_t var)
-{
-    auto &buf = cn.output_buffer();
-    if (var < 0)
-        buf.end = mp_encode_int(buf.data(), var);
-    else
-        buf.end = mp_encode_uint(buf.data(), static_cast<uint64_t>(var));
-    return cn;
-}
-
-connection &operator<<(connection &cn, uint64_t var)
-{
-    auto &buf = cn.output_buffer();
-    buf.end = mp_encode_uint(buf.data(), var);
-    return cn;
 }
 
 } // namespace tnt

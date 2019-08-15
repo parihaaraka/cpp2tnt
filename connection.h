@@ -25,7 +25,8 @@ enum class error {
     getaddr,              ///< address resolving failed
     timeout,              ///< operation timeout
     auth,                 ///< authentication error
-    closed_by_peer        ///< connection closed by peer
+    closed_by_peer,       ///< connection closed by peer
+    unexpected_data       ///< messagepack parse error and so on
 };
 
 /// Socket state to poll for.

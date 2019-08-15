@@ -5,6 +5,7 @@
 #include <sys/un.h>
 #include "msgpuck/msgpuck.h"
 #include "proto.h"
+#include "mp_reader.h"
 
 #ifndef MSG_NOSIGNAL
 #define MSG_NOSIGNAL 0
@@ -63,26 +64,20 @@ void connection::process_receive_buffer()
         if (!_detected_response_size && orphaned_bytes >= 5) // length part of standard tnt header
         {
             const char *head = _receive_buffer.data() + _last_received_head_offset;
-            _detected_response_size = mp_decode_uint(&head) + 5;
+            if (mp_typeof(*head) == MP_UINT)
+                _detected_response_size = mp_decode_uint(&head) + 5;
+            else
+            {
+                handle_error("incorrect iproto message", error::unexpected_data);
+                _receive_buffer.resize(_last_received_head_offset);
+            }
         }
 
-        if (_detected_response_size)
+        if (_detected_response_size && orphaned_bytes >= _detected_response_size)
         {
-            if (orphaned_bytes >= _detected_response_size)
-            {
-                _last_received_head_offset += _detected_response_size;
-                orphaned_bytes -= _detected_response_size;
-                if (orphaned_bytes >= 5) // next response found
-                {
-                    const char *head = _receive_buffer.data() + _last_received_head_offset;
-                    _detected_response_size = mp_decode_uint(&head) + 5;
-                    continue;
-                }
-                else
-                {
-                    _detected_response_size = 0;
-                }
-            }
+            _last_received_head_offset += _detected_response_size;
+            _detected_response_size = 0;
+            continue;
         }
         break;
     }
@@ -95,25 +90,37 @@ void connection::process_receive_buffer()
         // (in contradistinction to manual authentication request)
         if (_async_stage == async_stage::auth)
         {
-            const char *header_pos = _receive_buffer.data() + 5; // skip total length
-            auto h = decode_unified_header(&header_pos);
-            if (h && !h.code)
+            try
             {
-                _receive_buffer.clear();
-                _async_stage = async_stage::idle;
-                _idle_seconds_counter = -1;
-                if (_connected_cb)
+                mp_reader response = mp_reader(_receive_buffer).iproto_message();
+                uint32_t code;
+                response.map()[header_field::CODE] >> code;
+                if (!code)
                 {
-                    try
+                    _receive_buffer.clear();
+                    _async_stage = async_stage::idle;
+                    _idle_seconds_counter = -1;
+                    if (_connected_cb)
                     {
-                        _connected_cb();
+                        try
+                        {
+                            _connected_cb();
+                        }
+                        catch (...) {}
                     }
-                    catch (...) {}
+                    return;
                 }
-                return;
+                handle_error(response.map()[response_field::ERROR].to_string(), error::auth, code);
+            }
+            catch (const mp_error &e)
+            {
+                handle_error(e.what(), error::unexpected_data);
+            }
+            catch (const runtime_error &e)
+            {
+                handle_error(e.what(), error::system);
             }
 
-            handle_error(string_from_map(header_pos, response_field::ERROR), error::auth, h.code);
             _receive_buffer.clear();
             close(false);
             _idle_seconds_counter = 0; // reconnect soon

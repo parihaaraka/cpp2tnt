@@ -33,14 +33,16 @@ const char *mp_reader::end() const noexcept
 
 void mp_reader::skip()
 {
-    // TODO use mp_check/mp_next more selectively
+    // TODO
+    // use mp_check/mp_next more selectively (does it make sense?)
     if (mp_check(&_current_pos, _end))
         throw runtime_error("invalid messagepack");
 }
 
-void mp_reader::skip(mp_type type)
+void mp_reader::skip(mp_type type, bool nullable)
 {
-    if (mp_typeof(*_current_pos) != type)
+    auto actual_type = mp_typeof(*_current_pos);
+    if (actual_type != type && (!nullable || actual_type != MP_NIL))
         throw runtime_error("unexpected field type");
     skip();
 }
@@ -102,6 +104,21 @@ string_view mp_reader::to_string()
     }
 
     throw mp_error("string expected", _current_pos);
+}
+
+mp_reader &mp_reader::operator>>(string &val)
+{
+    string_view tmp = to_string();
+    if (!tmp.data())
+        throw mp_error("string expected", _current_pos);
+    val.assign(tmp.data(), tmp.size());
+    return *this;
+}
+
+mp_reader &mp_reader::operator>>(string_view &val)
+{
+    val = to_string();
+    return *this;
 }
 
 mp_reader::operator bool() const noexcept

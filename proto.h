@@ -123,27 +123,12 @@ enum class update_operation
     SPLICE    = ':',
 };
 
-/// Decoded tarantool's response unified header
-struct unified_header
-{
-    uint32_t schema_id = std::numeric_limits<uint32_t>::max();
-    uint32_t code;
-    uint64_t sync;
-    operator bool() const noexcept { return schema_id != std::numeric_limits<uint32_t>::max(); }
-};
-
+// TODO deprecate functions
 void encode_header(connection &cn, request_type rtype) noexcept;
 void encode_auth_request(connection &cn, std::string_view user, std::string_view password);
 
 std::size_t begin_call(connection &cn, std::string_view fn_name);
 void finalize_request(connection &cn, size_t head_offset);
-
-unified_header decode_unified_header(const char **ptr);
-const char* bin_from_map(const char *ptr, uint32_t key);
-std::string_view string_from_map(const char *ptr, uint32_t key);
-
-connection& operator<< (connection& cn, int64_t var);
-connection& operator<< (connection& cn, uint64_t var);
 
 } // namespace tnt
 

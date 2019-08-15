@@ -1,10 +1,13 @@
 #include <iostream>
+#include <map>
 #include "connection.h"
 // ev++.h does not compile in C++17 mode
 // It has a lack of noticeable advantages over plain C api so lets use the last one.
 #include <ev.h>
 #include "proto.h"
+#include "mp_reader.h"
 #include "msgpuck/msgpuck.h"
+#include <optional>
 
 using namespace std;
 
@@ -43,14 +46,22 @@ static void async_notifier_cb(struct ev_loop *, ev_async *w, int)
     cn->acquire_notifications();
 }
 
-static void echo_buf(const char *begin, const char *end)
+static void echo_buf(const char *begin, const char *end, const char *pos = nullptr)
 {
     constexpr char hexmap[] = {"0123456789abcdef"};
     int cnt = 0;
     for (const char* c = begin; c < end; ++c)
     {
         ++cnt;
-        cout << hexmap[(*c & 0xF0) >> 4] << hexmap[*c & 0x0F] << ' ';
+        char sep = ' ';
+        if (pos)
+        {
+            if (c == pos - 1)
+                sep = '>';
+            else if (c == pos)
+                sep = '<';
+        }
+        cout << hexmap[(*c & 0xF0) >> 4] << hexmap[*c & 0x0F]  << sep;
         if (cnt % 16 == 0)
             cout << endl;
         else if (cnt % 8 == 0)
@@ -125,30 +136,86 @@ int main(int argc, char *argv[])
         }
     });
 
-    cn.on_opened([&cn](){
+    map<uint64_t, fu2::unique_function<void(const mp_map_reader&, const mp_map_reader&)>> handlers;
+
+    cn.on_opened([&cn, &handlers]()
+    {
         cout << "connected" << endl;
 
         size_t head_offset = tnt::begin_call(cn, "box.info.memory");
         auto &buf = cn.output_buffer();
         buf.end = mp_encode_array(buf.end, 0);
         tnt::finalize_request(cn, head_offset);
+        handlers[cn.last_request_id()] = [](const mp_map_reader &header, const mp_map_reader &body)
+        {
+            int32_t code;
+            header[tnt::header_field::CODE] >> code;
+            if (code)
+            {
+                string err(body[tnt::response_field::ERROR].to_string());
+                throw runtime_error(err);
+            }
+
+            // response is an array of returned values with 32 bit length
+            auto ret_data = body[tnt::response_field::DATA];
+            cout << "box.info.memory() response content:" << endl;
+            echo_buf(ret_data.begin(), ret_data.end());
+        };
         cn.flush();
     });
 
-    cn.on_closed([](){
+    cn.on_closed([]()
+    {
         cout << "disconnected" << endl;
     });
 
     cn.on_notify_request(bind(ev_async_send, loop, &async_notifier));
 
-    cn.on_response([&cn](wtf_buffer &buf){
+    cn.on_response([&cn, &handlers](wtf_buffer &buf)
+    {
         cout << buf.size() << " bytes acquired:" << endl;
-        echo_buf(buf.data(), buf.end);
-
-        const char *header_pos = buf.data() + 5;
-        auto h = tnt::decode_unified_header(&header_pos);
-        if (h && h.code)
-            cout << "error: " << string_from_map(header_pos, tnt::response_field::ERROR) << endl;
+        try
+        {
+            mp_reader bunch{buf};
+            while (mp_reader r = bunch.iproto_message())
+            {
+                auto encoded_header = r.map();
+                uint64_t sync;
+                encoded_header[tnt::header_field::SYNC] >> sync;
+                auto it = handlers.find(sync);
+                if (it == handlers.end())
+                    cout << "orphaned response acquired" << endl;
+                else
+                {
+                    auto encoded_body = r.map();
+                    try
+                    {
+                        it->second(encoded_header, encoded_body);
+                    }
+                    catch(const mp_error &e)
+                    {
+                        cout << e.what() << endl;
+                        echo_buf(r.begin(), r.end(), e.pos());
+                    }
+                    catch(const runtime_error &e)
+                    {
+                        cout << e.what() << endl;
+                        echo_buf(r.begin(), r.end());
+                    }
+                    handlers.erase(it);
+                }
+            }
+        }
+        catch(const mp_error &e)
+        {
+            cout << e.what() << endl;
+            echo_buf(buf.data(), buf.end, e.pos());
+        }
+        catch(const runtime_error &e)
+        {
+            cout << e.what() << endl;
+            echo_buf(buf.data(), buf.end);
+        }
         cn.input_processed();
     });
 
