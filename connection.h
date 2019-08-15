@@ -115,6 +115,7 @@ public:
     wtf_buffer& output_buffer() noexcept;
     uint64_t last_request_id() const noexcept;
     uint64_t next_request_id() noexcept;
+    const cs_parts& connection_string_parts() const noexcept;
 
     /** Prevent further requests from being sent immediately upon creation. */
     void cork() noexcept;

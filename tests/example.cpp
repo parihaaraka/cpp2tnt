@@ -1,13 +1,13 @@
 #include <iostream>
 #include <map>
+#include <optional>
 #include "connection.h"
 // ev++.h does not compile in C++17 mode
 // It has a lack of noticeable advantages over plain C api so lets use the last one.
 #include <ev.h>
 #include "proto.h"
 #include "mp_reader.h"
-#include "msgpuck/msgpuck.h"
-#include <optional>
+#include "mp_writer.h"
 
 using namespace std;
 
@@ -141,11 +141,10 @@ int main(int argc, char *argv[])
     cn.on_opened([&cn, &handlers]()
     {
         cout << "connected" << endl;
-
-        size_t head_offset = tnt::begin_call(cn, "box.info.memory");
-        auto &buf = cn.output_buffer();
-        buf.end = mp_encode_array(buf.end, 0);
-        tnt::finalize_request(cn, head_offset);
+        mp_writer w(cn);
+        w.begin_call("box.info.memory");
+        w.begin_array(0); // no need to finalize zero-length array
+        w.end();
         handlers[cn.last_request_id()] = [](const mp_map_reader &header, const mp_map_reader &body)
         {
             int32_t code;

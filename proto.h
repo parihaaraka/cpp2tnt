@@ -32,16 +32,11 @@
 
 /** @file */
 
-#include <string_view>
-
-class wtf_buffer;
+#include <cinttypes>
 
 /// Tarantool connector scope
 namespace tnt
 {
-
-class connection;
-struct cs_parts;
 
 constexpr int SCRAMBLE_SIZE =  20;
 constexpr int GREETING_SIZE = 128;
@@ -110,7 +105,7 @@ enum header_field
 };
 
 /// Update operations
-enum class update_operation
+enum update_operation
 {
     ADD       = '+',
     SUBSTRACT = '-',
@@ -122,13 +117,6 @@ enum class update_operation
     ASSIGN    = '=',
     SPLICE    = ':',
 };
-
-// TODO deprecate functions
-void encode_header(connection &cn, request_type rtype) noexcept;
-void encode_auth_request(connection &cn, std::string_view user, std::string_view password);
-
-std::size_t begin_call(connection &cn, std::string_view fn_name);
-void finalize_request(connection &cn, size_t head_offset);
 
 } // namespace tnt
 

@@ -28,17 +28,18 @@ public:
     mp_reader(const mp_reader &) = default;
     const char* begin() const noexcept;
     const char* end() const noexcept;
-    /// skip current encoded item (in case of array/map skips all its elements)
+    /// Skip current encoded item (in case of array/map skips all its elements).
     void skip();
-    /// skip current encoded item and verify its type
+    /// Skip current encoded item and verify its type.
     void skip(mp_type type, bool nullable = false);
-    /// return current encoded map within its separate reader and skip it
+    /// Return current encoded map within separate reader and move current position to next item.
     mp_map_reader map();
-    /// return current encoded array within its separate reader and skip it
+    /// Return current encoded array within separate reader and move current position to next item.
     mp_array_reader array();
-    /// return current encoded iproto message (header + body) within its separate reader and skip it
+    /// Return current encoded iproto message (header + body) within separate reader
+    /// and move current position to next item.
     mp_reader iproto_message();
-    /// extract string data from current encoded string and skip it
+    /// Extract string data from current encoded string and move current position to next item.
     std::string_view to_string();
 
     /// true if not empty
@@ -117,7 +118,7 @@ public:
     /// Return reader for a value with specified key.
     /// Current parsing position stays unchanged. Returns empty reader if key is not found.
     mp_reader find(int64_t key) const;
-    /// the map's cardinality
+    /// The map's cardinality.
     size_t size() const noexcept;
 private:
     friend class mp_reader;
@@ -133,7 +134,7 @@ public:
     /// Return reader for a value with specified index.
     /// Current parsing position stays unchanged. Throw if index out of bounds.
     mp_reader operator[](size_t ind) const;
-    /// the array's cardinality
+    /// The array's cardinality.
     size_t size() const noexcept;
 private:
     friend class mp_reader;

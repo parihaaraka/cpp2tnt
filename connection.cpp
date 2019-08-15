@@ -6,6 +6,7 @@
 #include "msgpuck/msgpuck.h"
 #include "proto.h"
 #include "mp_reader.h"
+#include "mp_writer.h"
 
 #ifndef MSG_NOSIGNAL
 #define MSG_NOSIGNAL 0
@@ -400,6 +401,11 @@ uint64_t connection::next_request_id() noexcept
     return _request_id++;
 }
 
+const cs_parts &connection::connection_string_parts() const noexcept
+{
+    return _cs_parts;
+}
+
 void connection::cork() noexcept
 {
     _is_corked = true;
@@ -536,7 +542,8 @@ void connection::read()
         if (!_cs_parts.user.empty() || _cs_parts.user != "guest" || !_cs_parts.password.empty())
         {
             _async_stage = async_stage::auth;
-            encode_auth_request(*this, _cs_parts.user, _cs_parts.password);
+            mp_writer dst(*this);
+            dst.encode_auth_request();
             flush();
         }
         else
