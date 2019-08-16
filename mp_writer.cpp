@@ -48,7 +48,7 @@ void mp_writer::encode_header(tnt::request_type req_type)
     // close previous request and its opened containers
     while (!_opened_containers.empty()) end();
 
-    // ensure we have free space
+    // ensure we have 1kb free (make prereserve manually if you need some more)
     if (_buf.capacity() - _buf.size() < 1024)
         _buf.reserve(static_cast<size_t>(_buf.capacity() * 1.5));
 
@@ -141,7 +141,7 @@ void mp_writer::end()
             return;
 
         if (size > c.max_cardinality)
-            throw range_error("request size exceeded");
+            throw overflow_error("request size exceeded");
         mp_store_u32(++head, static_cast<uint32_t>(size - 5));
         return;
     }
@@ -204,7 +204,7 @@ void mp_writer::end()
         mp_store_u32(++head, actual_cardinality);
         break;
     default:
-        throw runtime_error("wtf?");
+        throw runtime_error("previously not implemented container cardinality");
     }
 }
 

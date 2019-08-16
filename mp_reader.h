@@ -6,18 +6,19 @@
 #include <optional>
 #include "msgpuck/msgpuck.h"
 
-class mp_error : public std::runtime_error
-{
-public:
-    explicit mp_error(const std::string &msg, const char *pos = nullptr);
-    const char* pos() const noexcept;
-private:
-    const char* _pos;
-};
-
 class wtf_buffer;
 class mp_map_reader;
 class mp_array_reader;
+class mp_reader;
+
+std::string hex_dump(const char *begin, const char *end, const char *pos = nullptr);
+
+/// messagepack parsing error
+class mp_reader_error : public std::runtime_error
+{
+public:
+    explicit mp_reader_error(const std::string &msg, const mp_reader &reader);
+};
 
 /// messagepack reader
 class mp_reader
@@ -28,6 +29,7 @@ public:
     mp_reader(const mp_reader &) = default;
     const char* begin() const noexcept;
     const char* end() const noexcept;
+    const char* pos() const noexcept;
     /// Skip current encoded item (in case of array/map skips all its elements).
     void skip();
     /// Skip current encoded item and verify its type.
@@ -73,7 +75,7 @@ public:
                 val = mp_decode_bool(&_current_pos);
                 return *this;
             }
-            throw mp_error("boolean expected", _current_pos);
+            throw mp_reader_error("boolean expected", *this);
         }
         else
         {
@@ -97,9 +99,9 @@ public:
             }
             else
             {
-                throw mp_error("integer expected", _current_pos);
+                throw mp_reader_error("integer expected", *this);
             }
-            throw mp_error("value overflow", _current_pos);
+            throw mp_reader_error("value overflow", *this);
         }
     }
 

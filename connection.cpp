@@ -113,11 +113,11 @@ void connection::process_receive_buffer()
                 }
                 handle_error(response.map()[response_field::ERROR].to_string(), error::auth, code);
             }
-            catch (const mp_error &e)
+            catch (const mp_reader_error &e)
             {
                 handle_error(e.what(), error::unexpected_data);
             }
-            catch (const runtime_error &e)
+            catch (const exception &e)
             {
                 handle_error(e.what(), error::system);
             }
@@ -152,7 +152,15 @@ void connection::pass_response_to_caller()
     if (_response_cb)
     {
         _caller_idle = false;
-        _response_cb(_input_buffer);
+        try
+        {
+            _response_cb(_input_buffer);
+        }
+        catch (const exception &e)
+        {
+            handle_error(e.what(), error::system);
+            input_processed();  // !!!
+        }
         // If a caller processes data synchronously, then we will never get
         // nested calls, because the loop is stuck - we do not receive data.
         // If a caller processes data asynchronously, then the loop is ok.
@@ -202,7 +210,7 @@ void connection::address_resolved(const addrinfo *addr_info)
         // bad luck to get errors here, but why would we stop connecting?
 
         _async_stage = async_stage::connecting;
-        if (::connect(s.handle(), addr->ai_addr, addr->ai_addrlen) != -1)
+        if (connect(s.handle(), addr->ai_addr, addr->ai_addrlen) != -1)
         {
             _socket = move(s);
             _socket_watcher_request_cb(socket_state::read); //wait for greeting
@@ -310,7 +318,7 @@ void connection::open()
              addr.sun_path);
 
         _async_stage = async_stage::connecting;
-        if (::connect(s.handle(), reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) != -1)
+        if (connect(s.handle(), reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) != -1)
         {
             _socket = move(s);
             _socket_watcher_request_cb(socket_state::read); //wait for greeting

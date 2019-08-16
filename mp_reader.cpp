@@ -4,11 +4,37 @@
 
 using namespace std;
 
-mp_error::mp_error(const string &msg, const char *pos): runtime_error(msg), _pos(pos) {}
-
-const char *mp_error::pos() const noexcept
+std::string hex_dump(const char *begin, const char *end, const char *pos)
 {
-    return _pos;
+    std::string res;
+    res.reserve(static_cast<size_t>((end - begin)) * 4);
+    constexpr char hexmap[] = {"0123456789abcdef"};
+    int cnt = 0;
+    for (const char* c = begin; c < end; ++c)
+    {
+        ++cnt;
+        char sep = ' ';
+        if (pos)
+        {
+            if (c == pos - 1)
+                sep = '>';
+            else if (c == pos)
+                sep = '<';
+        }
+        res += hexmap[(*c & 0xF0) >> 4];
+        res += hexmap[*c & 0x0F];
+        res += sep;
+        if (cnt % 16 == 0)
+            res += '\n';
+        else if (cnt % 8 == 0)
+            res += ' ';
+    }
+    return res;
+}
+
+mp_reader_error::mp_reader_error(const std::string &msg, const mp_reader &reader)
+    : runtime_error(msg + hex_dump(reader.begin(), reader.end(), reader.pos()))
+{
 }
 
 mp_reader::mp_reader(const wtf_buffer &buf) : mp_reader(buf.data(), buf.end)
@@ -21,14 +47,19 @@ mp_reader::mp_reader(const char *begin, const char *end)
     _end = end;
 }
 
-const char *mp_reader::begin() const noexcept
+const char* mp_reader::begin() const noexcept
 {
     return _begin;
 }
 
-const char *mp_reader::end() const noexcept
+const char* mp_reader::end() const noexcept
 {
     return _end;
+}
+
+const char* mp_reader::pos() const noexcept
+{
+    return _current_pos;
 }
 
 void mp_reader::skip()
@@ -36,25 +67,25 @@ void mp_reader::skip()
     // TODO
     // use mp_check/mp_next more selectively (does it make sense?)
     if (mp_check(&_current_pos, _end))
-        throw runtime_error("invalid messagepack");
+        throw mp_reader_error("invalid messagepack", *this);
 }
 
 void mp_reader::skip(mp_type type, bool nullable)
 {
     auto actual_type = mp_typeof(*_current_pos);
     if (actual_type != type && (!nullable || actual_type != MP_NIL))
-        throw runtime_error("unexpected field type");
+        throw mp_reader_error("unexpected field type", *this);
     skip();
 }
 
 mp_map_reader mp_reader::map()
 {
     if (mp_typeof(*_current_pos) != MP_MAP)
-        throw mp_error("map expected", _current_pos);
+        throw mp_reader_error("map expected", *this);
 
     auto head = _current_pos;
     if (mp_check(&_current_pos, _end))
-        throw mp_error("invalid messagepack", _current_pos);
+        throw mp_reader_error("invalid messagepack", *this);
     auto size = mp_decode_map(&head);
 
     return mp_map_reader(head, _current_pos, size);
@@ -63,11 +94,11 @@ mp_map_reader mp_reader::map()
 mp_array_reader mp_reader::array()
 {
     if (mp_typeof(*_current_pos) != MP_ARRAY)
-        throw mp_error("array expected", _current_pos);
+        throw mp_reader_error("array expected", *this);
 
     auto head = _current_pos;
     if (mp_check(&_current_pos, _end))
-        throw mp_error("invalid messagepack", _current_pos);
+        throw mp_reader_error("invalid messagepack", *this);
     auto size = mp_decode_array(&head);
 
     return mp_array_reader(head, _current_pos, size);
@@ -79,11 +110,11 @@ mp_reader mp_reader::iproto_message()
         return {_current_pos, _current_pos}; // empty object
 
     if (static_cast<uint8_t>(*_current_pos) != 0xce)
-        throw mp_error("invalid iproto packet", _current_pos);
+        throw mp_reader_error("invalid iproto packet", *this);
 
     uint64_t response_size = mp_decode_uint(&_current_pos);
     if (static_cast<uint64_t>(_end - _current_pos) < response_size)
-        throw mp_error("partial iproto packet", _current_pos);
+        throw mp_reader_error("partial iproto packet", *this);
 
     auto head = _current_pos;
     _current_pos += response_size;
@@ -103,14 +134,14 @@ string_view mp_reader::to_string()
         return {value, len};
     }
 
-    throw mp_error("string expected", _current_pos);
+    throw mp_reader_error("string expected", *this);
 }
 
 mp_reader &mp_reader::operator>>(string &val)
 {
     string_view tmp = to_string();
     if (!tmp.data())
-        throw mp_error("string expected", _current_pos);
+        throw mp_reader_error("string expected", *this);
     val.assign(tmp.data(), tmp.size());
     return *this;
 }
@@ -137,7 +168,7 @@ mp_reader mp_map_reader::operator[](int64_t key) const
 {
     mp_reader res = find(key);
     if (!res)
-        throw mp_error("key not found", _current_pos);
+        throw mp_reader_error("key not found", *this);
     return res;
 }
 
@@ -187,7 +218,7 @@ mp_array_reader::mp_array_reader(const char *begin, const char *end, size_t card
 mp_reader mp_array_reader::operator[](size_t ind) const
 {
     if (ind >= _cardinality)
-        throw out_of_range("index out of range");
+        throw mp_reader_error("index out of range", *this);
 
     const char *ptr = _begin;
     for (size_t i = 0; i < ind; ++i)
