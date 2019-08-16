@@ -65,7 +65,8 @@ public:
         return *this;
     }
 
-    template <typename T, typename = std::enable_if_t<std::is_integral_v<T>>>
+    // use external operator overload for 128 bit integers
+    template <typename T, typename = std::enable_if_t<std::is_integral_v<T> && sizeof(T) < 16>>
     mp_reader& operator>> (T &val)
     {
         if constexpr (std::is_same_v<T, bool>)

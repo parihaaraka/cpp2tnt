@@ -64,7 +64,7 @@ public:
         return *this;
     }
 
-    template <typename T, typename = std::enable_if_t<std::is_integral_v<T>>>
+    template <typename T, typename = std::enable_if_t<std::is_integral_v<T> && sizeof(T) < 16>>
     mp_writer& operator<< (const T &val) noexcept
     {
         if constexpr (std::is_same_v<T, bool>)
