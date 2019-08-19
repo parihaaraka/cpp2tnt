@@ -130,10 +130,10 @@ int main(int argc, char *argv[])
         };
 
         cout << "connected" << endl;
-        mp_writer w(cn);
+        iproto_writer w(cn);
         w.begin_call("box.info.memory");
         w.begin_array(0); // no need to finalize zero-length array
-        w.end();
+        w.finalize();
         handlers[cn.last_request_id()] = [&throw_if_error](const mp_map_reader &header, const mp_map_reader &body)
         {
             throw_if_error(header, body);

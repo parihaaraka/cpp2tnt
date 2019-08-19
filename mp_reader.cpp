@@ -33,7 +33,7 @@ std::string hex_dump(const char *begin, const char *end, const char *pos)
 }
 
 mp_reader_error::mp_reader_error(const std::string &msg, const mp_reader &reader)
-    : runtime_error(msg + hex_dump(reader.begin(), reader.end(), reader.pos()))
+    : runtime_error(msg + '\n' + hex_dump(reader.begin(), reader.end(), reader.pos()))
 {
 }
 

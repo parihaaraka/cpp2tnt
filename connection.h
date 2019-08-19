@@ -80,9 +80,9 @@ private:
     async_stage _async_stage = async_stage::none;
 
     // move-only data must pass through this queue
-    std::vector<fu2::unique_function<void()>> _notification_handlers;
-    std::mutex _queue_guard;
-    std::thread _resolver;
+    std::vector<fu2::unique_function<void()>> _notification_handlers, _tmp_notification_handlers;
+    std::mutex _handlers_queue_guard;
+    std::thread _address_resolver;
     void address_resolved(const addrinfo *addr_info);
 
     fu2::unique_function<void(std::string_view message,
@@ -107,6 +107,8 @@ public:
     void open();
     void close(bool call_disconnect_handler = true);
     void set_connection_string(std::string_view connection_string);
+    /** Thread-safe method to initiate a handler call in the connector's thread */
+    void push_handler(fu2::unique_function<void()> &&handler);
 
     int socket_handle() const noexcept;
     std::string_view greeting() const noexcept;

@@ -174,8 +174,8 @@ void connection::pass_response_to_caller()
 connection::~connection()
 {
     close();
-    if (_resolver.joinable())
-        _resolver.join();
+    if (_address_resolver.joinable())
+        _address_resolver.join();
 }
 
 void connection::address_resolved(const addrinfo *addr_info)
@@ -242,7 +242,7 @@ void connection::open()
         return;
     }
 
-    if (_resolver.joinable())
+    if (_address_resolver.joinable())
     {
         handle_error("address resolver is still in progress", error::getaddr_in_progress);
         return;
@@ -258,7 +258,7 @@ void connection::open()
         // so don't try to implement resolving timeout
 
         _async_stage = async_stage::address_resolving;
-        _resolver = std::thread([this]()
+        _address_resolver = std::thread([this]()
         {
             addrinfo *addr_info = nullptr;
             addrinfo hints{0, 0, SOCK_STREAM, IPPROTO_TCP, 0, nullptr, nullptr, nullptr};
@@ -273,10 +273,10 @@ void connection::open()
 
             if (!res && ai)
             {
-                lock_guard<mutex> lk(_queue_guard);
+                lock_guard<mutex> lk(_handlers_queue_guard);
                 _notification_handlers.push_back([ai = move(ai), this](){
-                    if (_resolver.joinable())
-                        _resolver.join();
+                    if (_address_resolver.joinable())
+                        _address_resolver.join();
                     address_resolved(ai.get());
                 });
             }
@@ -287,10 +287,10 @@ void connection::open()
                     message = errno2str();
                 else
                     message = gai_strerror(res);
-                lock_guard<mutex> lk(_queue_guard);
+                lock_guard<mutex> lk(_handlers_queue_guard);
                 _notification_handlers.push_back([message, this](){
-                    if (_resolver.joinable())
-                        _resolver.join();
+                    if (_address_resolver.joinable())
+                        _address_resolver.join();
                     _async_stage = async_stage::none;
                     handle_error(message, error::getaddr);
                     // retry because we may fix dns
@@ -384,6 +384,16 @@ void connection::set_connection_string(string_view connection_string)
     _current_cs = connection_string;
 }
 
+void connection::push_handler(fu2::unique_function<void()> &&handler)
+{
+    unique_lock<mutex> lk(_handlers_queue_guard);
+    _notification_handlers.push_back(move(handler));
+    lk.unlock();
+
+    if (_on_notify_request)
+        _on_notify_request();
+}
+
 int connection::socket_handle() const noexcept
 {
     return _socket.handle();
@@ -472,11 +482,13 @@ void connection::tick_1sec() noexcept
 
 void connection::acquire_notifications()
 {
-    unique_lock<mutex> lk(_queue_guard);
-    auto tmp = move(_notification_handlers);
+    unique_lock<mutex> lk(_handlers_queue_guard);
+    _tmp_notification_handlers.swap(_notification_handlers);
     lk.unlock();
-    for (auto &fn: tmp)
+
+    for (auto &fn: _tmp_notification_handlers)
         fn();
+    _tmp_notification_handlers.clear();
 }
 
 connection& connection::on_opened(decltype(_connected_cb) &&handler)
@@ -550,7 +562,7 @@ void connection::read()
         if (!_cs_parts.user.empty() || _cs_parts.user != "guest" || !_cs_parts.password.empty())
         {
             _async_stage = async_stage::auth;
-            mp_writer dst(*this);
+            iproto_writer dst(*this);
             dst.encode_auth_request();
             flush();
         }

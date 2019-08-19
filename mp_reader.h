@@ -139,6 +139,18 @@ public:
     mp_reader operator[](size_t ind) const;
     /// The array's cardinality.
     size_t cardinality() const noexcept;
+
+    using mp_reader::operator>>;
+    template <typename T>
+    mp_array_reader& operator>> (std::optional<T> &val)
+    {
+        // try to interpret out of bounds items as trailing tuple fields with NULL values
+        if (_current_pos >= _end)
+            val = std::nullopt;
+        else
+            mp_reader::operator>>(val);
+        return *this;
+    }
 private:
     friend class mp_reader;
     mp_array_reader(const char *begin, const char *end, size_t cardinality);
