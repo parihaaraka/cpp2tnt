@@ -136,9 +136,13 @@ void mp_writer::finalize()
 
 mp_writer& mp_writer::operator<<(const string_view &val)
 {
-    if (val.size() > std::numeric_limits<uint32_t>::max())
+    if (val.data() == nullptr)
+        _buf.end = mp_encode_nil(_buf.end);
+    else if (val.size() > std::numeric_limits<uint32_t>::max())
         throw overflow_error("too long string");
-    _buf.end = mp_encode_str(_buf.end, val.data(), static_cast<uint32_t>(val.size()));
+    else
+        _buf.end = mp_encode_str(_buf.end, val.data(), static_cast<uint32_t>(val.size()));
+
     if (!_opened_containers.empty())
         ++_opened_containers.top().items_count;
     return *this;

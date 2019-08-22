@@ -361,6 +361,7 @@ void connection::close(bool call_disconnect_handler)
     // according to application logic.
     _output_buffer.clear();
     _send_buffer.clear();
+    _next_to_send = _send_buffer.data(); // otherwise flush() is broken on reconnect
     _uncorked_size = 0;
 
     // remove partial response
