@@ -343,12 +343,12 @@ void connection::open()
     }
 }
 
-void connection::close(bool call_disconnect_handler)
+void connection::close(bool call_disconnect_handler, bool reconnect_soon)
 {
     auto prev_async_stage = _async_stage;
     _greeting.clear();
     _async_stage = async_stage::none;
-    _idle_seconds_counter = -1;
+    _idle_seconds_counter = reconnect_soon ? 0 : -1;
     _request_id = 0;
 
     if (!_socket)
@@ -468,7 +468,7 @@ void connection::tick_1sec() noexcept
 {
     if (_idle_seconds_counter >= 0 && ++_idle_seconds_counter >= GENERAL_TIMEOUT)
     {
-        if (_async_stage == async_stage::none) // wait for reconnect
+        if (_async_stage == async_stage::none) // waiting for reconnect
         {
             open();
         }

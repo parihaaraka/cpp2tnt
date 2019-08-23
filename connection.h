@@ -105,7 +105,7 @@ public:
     ~connection();
 
     void open();
-    void close(bool call_disconnect_handler = true);
+    void close(bool call_disconnect_handler = true, bool reconnect_soon = false);
     void set_connection_string(std::string_view connection_string);
     /** Thread-safe method to initiate a handler call in the connector's thread */
     void push_handler(fu2::unique_function<void()> &&handler);

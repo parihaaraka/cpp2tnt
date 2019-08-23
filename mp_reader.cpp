@@ -127,11 +127,18 @@ string_view mp_reader::to_string()
     if (!*this)
         return {};
 
-    if (mp_typeof(*_current_pos) == MP_STR)
+    auto type = mp_typeof(*_current_pos);
+    if (type == MP_STR)
     {
         uint32_t len = 0;
         const char *value = mp_decode_str(&_current_pos, &len);
         return {value, len};
+    }
+
+    if (type == MP_NIL)
+    {
+        mp_decode_nil(&_current_pos);
+        return {}; // data() == nullptr
     }
 
     throw mp_reader_error("string expected", *this);
