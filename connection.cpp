@@ -111,6 +111,7 @@ void connection::process_receive_buffer()
                     }
                     return;
                 }
+                code &= 0x7fff;
                 handle_error(response.map()[response_field::ERROR].to_string(), error::auth, code);
             }
             catch (const mp_reader_error &e)
