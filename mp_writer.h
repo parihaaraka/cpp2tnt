@@ -48,6 +48,16 @@ public:
         return *this;
     }
 
+    template <typename T>
+    mp_writer& operator<< (const std::vector<T> &val) noexcept
+    {
+        begin_array(val.size());
+        for( auto& it : val )
+            *this<<it;
+        finalize();
+        return *this;
+    }
+
     template <typename T, typename = std::enable_if_t<std::is_integral_v<T> && sizeof(T) < 16>>
     mp_writer& operator<< (const T &val) noexcept
     {

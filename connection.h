@@ -88,10 +88,6 @@ private:
     fu2::unique_function<void(std::string_view message,
                               error internal_error,
                               uint32_t db_error)> _error_cb = nullptr;
-    void handle_error(std::string_view message = {},
-                      error internal_error = error::system,
-                      uint32_t db_error = 0) noexcept;
-
     // need to capture watcher, so movable functions preferred
     fu2::unique_function<void(int mode)> _socket_watcher_request_cb;
     fu2::unique_function<void()> _on_notify_request;
@@ -99,6 +95,11 @@ private:
     fu2::unique_function<void(wtf_buffer &buf)> _response_cb;
     fu2::unique_function<void()> _connected_cb;
     fu2::unique_function<void()> _disconnected_cb;
+
+protected:
+    void handle_error(std::string_view message = {},
+                      error internal_error = error::system,
+                      uint32_t db_error = 0) noexcept;
 
 public:
     connection(std::string_view connection_string = {});
