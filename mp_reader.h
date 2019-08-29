@@ -6,7 +6,7 @@
 #include <optional>
 #include <vector>
 
-#include "./third_party/msgpuck/msgpuck.h"
+#include "msgpuck/msgpuck.h"
 
 class wtf_buffer;
 class mp_map_reader;
