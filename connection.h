@@ -9,7 +9,7 @@
 #include <mutex>
 #include "wtf_buffer.h"
 #include "unique_socket.h"
-#include "./third_party/fu2/function2.hpp"
+#include "fu2/function2.hpp"
 #include "cs_parser.h"
 
 /// Tarantool connector scope
