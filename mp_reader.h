@@ -4,7 +4,9 @@
 #include <cstddef>
 #include <stdexcept>
 #include <optional>
-#include "msgpuck/msgpuck.h"
+#include <vector>
+
+#include "./third_party/msgpuck/msgpuck.h"
 
 class wtf_buffer;
 class mp_map_reader;
@@ -100,7 +102,7 @@ public:
             }
             else
             {
-                throw mp_reader_error("integer expected", *this);
+                throw mp_reader_error("integer expected but get " + std::to_string(int(mp_typeof(*_current_pos))) , *this);
             }
             throw mp_reader_error("value overflow", *this);
         }
@@ -156,5 +158,15 @@ private:
     mp_array_reader(const char *begin, const char *end, size_t cardinality);
     size_t _cardinality;
 };
+
+template <typename T>
+mp_reader& operator>> (mp_reader& reader, std::vector<T>& val)
+{
+    auto vector = reader.array();
+    val.resize(vector.cardinality());
+    for (size_t i = 0; i < vector.cardinality(); ++i)
+        vector >> val[i];
+    return  reader;
+}
 
 #endif // MP_READER_H

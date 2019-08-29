@@ -3,7 +3,7 @@
 
 #include <string_view>
 #include <array>
-#include "msgpuck/msgpuck.h"
+#include "./third_party/msgpuck/msgpuck.h"
 #include "wtf_buffer.h"
 
 namespace tnt {
@@ -45,6 +45,16 @@ public:
             return *this;
         }
         operator<<(val.value());
+        return *this;
+    }
+
+    template <typename T>
+    mp_writer& operator<< (const std::vector<T> &val) noexcept
+    {
+        begin_array(val.size());
+        for( auto& it : val )
+            *this<<it;
+        finalize();
         return *this;
     }
 
