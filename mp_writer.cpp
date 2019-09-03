@@ -40,6 +40,9 @@ mp_writer::mp_writer(wtf_buffer &buf) : _buf(buf) {}
 
 void mp_writer::begin_array(uint32_t max_cardinality)
 {
+    if (!_opened_containers.empty())
+        ++_opened_containers.top().items_count;
+
     if (max_cardinality)
         _opened_containers.push({_buf.size(), max_cardinality});
     _buf.end = mp_encode_array(_buf.end, max_cardinality);
@@ -47,6 +50,9 @@ void mp_writer::begin_array(uint32_t max_cardinality)
 
 void mp_writer::begin_map(uint32_t max_cardinality)
 {
+    if (!_opened_containers.empty())
+        ++_opened_containers.top().items_count;
+
     if (max_cardinality)
         _opened_containers.push({_buf.size(), max_cardinality * 2});
     _buf.end = mp_encode_map(_buf.end, max_cardinality);

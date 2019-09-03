@@ -32,10 +32,42 @@ std::string hex_dump(const char *begin, const char *end, const char *pos)
     return res;
 }
 
+static string mpuck_type_name(mp_type type)
+{
+    switch (type)
+    {
+    case MP_NIL:
+        return "nil";
+    case MP_UINT:
+        return "uint";
+    case MP_INT:
+        return "int";
+    case MP_STR:
+        return "string";
+    case MP_BIN:
+        return "bin";
+    case MP_ARRAY:
+        return "array";
+    case MP_MAP:
+        return "map";
+    case MP_BOOL:
+        return "bool";
+    case MP_FLOAT:
+        return "float";
+    case MP_DOUBLE:
+        return "double";
+    case MP_EXT:
+        return "ext";
+    }
+    return "MPUCK:" + std::to_string(static_cast<int>(type));
+}
+
 mp_reader_error::mp_reader_error(const std::string &msg, const mp_reader &reader)
     : runtime_error(msg + '\n' + hex_dump(reader.begin(), reader.end(), reader.pos()))
 {
 }
+
+// ------------------------------------------------------------------------------------------------
 
 mp_reader::mp_reader(const wtf_buffer &buf) : mp_reader(buf.data(), buf.end)
 {
@@ -74,14 +106,15 @@ void mp_reader::skip(mp_type type, bool nullable)
 {
     auto actual_type = mp_typeof(*_current_pos);
     if (actual_type != type && (!nullable || actual_type != MP_NIL))
-        throw mp_reader_error("unexpected field type", *this);
+        throw mp_reader_error(mpuck_type_name(type) + " expected, got " + mpuck_type_name(actual_type), *this);
     skip();
 }
 
 mp_map_reader mp_reader::map()
 {
-    if (mp_typeof(*_current_pos) != MP_MAP)
-        throw mp_reader_error("map expected", *this);
+    auto type = mp_typeof(*_current_pos);
+    if (type != MP_MAP)
+        throw mp_reader_error("map expected, got " + mpuck_type_name(type), *this);
 
     auto head = _current_pos;
     if (mp_check(&_current_pos, _end))
@@ -93,8 +126,9 @@ mp_map_reader mp_reader::map()
 
 mp_array_reader mp_reader::array()
 {
-    if (mp_typeof(*_current_pos) != MP_ARRAY)
-        throw mp_reader_error("array expected", *this);
+    auto type = mp_typeof(*_current_pos);
+    if (type != MP_ARRAY)
+        throw mp_reader_error("array expected, got " + mpuck_type_name(type), *this);
 
     auto head = _current_pos;
     if (mp_check(&_current_pos, _end))
@@ -141,14 +175,14 @@ string_view mp_reader::to_string()
         return {}; // data() == nullptr
     }
 
-    throw mp_reader_error("string expected", *this);
+    throw mp_reader_error("string expected, got " + mpuck_type_name(type), *this);
 }
 
 mp_reader &mp_reader::operator>>(string &val)
 {
     string_view tmp = to_string();
     if (!tmp.data())
-        throw mp_reader_error("string expected", *this);
+        throw mp_reader_error("string expected, got no data", *this);
     val.assign(tmp.data(), tmp.size());
     return *this;
 }

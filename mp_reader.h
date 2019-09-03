@@ -4,6 +4,8 @@
 #include <cstddef>
 #include <stdexcept>
 #include <optional>
+#include <vector>
+#include <map>
 #include "msgpuck/msgpuck.h"
 
 class wtf_buffer;
@@ -69,9 +71,10 @@ public:
     template <typename T, typename = std::enable_if_t<std::is_integral_v<T> && sizeof(T) < 16>>
     mp_reader& operator>> (T &val)
     {
+        auto type = mp_typeof(*_current_pos);
         if constexpr (std::is_same_v<T, bool>)
         {
-            if (mp_typeof(*_current_pos) == MP_BOOL)
+            if (type == MP_BOOL)
             {
                 val = mp_decode_bool(&_current_pos);
                 return *this;
@@ -80,7 +83,7 @@ public:
         }
         else
         {
-            if (mp_typeof(*_current_pos) == MP_UINT)
+            if (type == MP_UINT)
             {
                 uint64_t res = mp_decode_uint(&_current_pos);
                 if (res <= std::numeric_limits<T>::max())
@@ -89,7 +92,7 @@ public:
                     return *this;
                 }
             }
-            else if (mp_typeof(*_current_pos) == MP_INT)
+            else if (type == MP_INT)
             {
                 int64_t res = mp_decode_int(&_current_pos);
                 if (res <= std::numeric_limits<T>::max() && res >= std::numeric_limits<T>::min())
@@ -105,6 +108,18 @@ public:
             throw mp_reader_error("value overflow", *this);
         }
     }
+
+    template <typename T>
+    mp_reader& operator>> (std::vector<T> &val);
+
+    template <typename KeyT, typename ValueT>
+    mp_reader& operator>> (std::map<KeyT, ValueT> &val);
+
+    template <typename... Args>
+    mp_reader& operator>> (std::tuple<Args...> &val);
+
+    template <typename... Args>
+    mp_reader& operator>> (std::tuple<Args&...> val);
 
 protected:
     const char *_begin, *_end, *_current_pos;
@@ -156,5 +171,57 @@ private:
     mp_array_reader(const char *begin, const char *end, size_t cardinality);
     size_t _cardinality;
 };
+
+template <typename T>
+mp_reader& mp_reader::operator>> (std::vector<T> &val)
+{
+    mp_array_reader arr = array();
+    val.resize(arr.cardinality());
+    for (size_t i = 0; i < val.size(); ++i)
+        arr >> val[i];
+    return *this;
+}
+
+template <typename KeyT, typename ValueT>
+mp_reader& mp_reader::operator>> (std::map<KeyT, ValueT> &val)
+{
+    mp_map_reader mp_map = map();
+    for (size_t i = 0; i < mp_map.cardinality(); ++i)
+    {
+        KeyT k;
+        ValueT v;
+        mp_map >> k >> v;
+        val[k] = std::move(v);
+    }
+    return *this;
+}
+
+template <typename... Args>
+mp_reader& mp_reader::operator>> (std::tuple<Args...> &val)
+{
+    mp_array_reader arr = array();
+    std::apply(
+        [arr](const auto&... item)
+        {
+            ((arr >> item), ...);
+        },
+        val
+    );
+    return *this;
+}
+
+template <typename... Args>
+mp_reader& mp_reader::operator>> (std::tuple<Args&...> val)
+{
+    mp_array_reader arr = array();
+    std::apply(
+        [arr](const auto&... item)
+        {
+            ((arr >> item), ...);
+        },
+        val
+    );
+    return *this;
+}
 
 #endif // MP_READER_H
