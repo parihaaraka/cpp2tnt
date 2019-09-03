@@ -25,7 +25,7 @@ namespace tnt
         asyncNotifier_.data = this;
         ev_async_start(loop, &asyncNotifier_);
 
-        ev_timer_init(&timer_, OnTimer_, 1, 1);
+        ev_timer_init(&timer_, OnTimer_, 0, 1);
         timer_.data = this;
         ev_timer_start(loop, &timer_);
 
@@ -45,14 +45,6 @@ namespace tnt
             ev_io_set(&socketWatcher_, socket_handle(), events);
             if (events)
                 ev_io_start(loop_, &socketWatcher_);
-
-            if (mode & tnt::socket_state::read)
-                cout << "R";
-            if (mode & tnt::socket_state::write)
-                cout << "W";
-            if (!mode)
-                cout << "N";
-            cout << endl;
         }
 
     }

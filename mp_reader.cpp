@@ -74,14 +74,14 @@ void mp_reader::skip(mp_type type, bool nullable)
 {
     auto actual_type = mp_typeof(*_current_pos);
     if (actual_type != type && (!nullable || actual_type != MP_NIL))
-        throw mp_reader_error("unexpected field type", *this);
+        throw mp_reader_error(string("unexpected field type ") + ToString(actual_type) + " but required " + ToString(type), *this);
     skip();
 }
 
 mp_map_reader mp_reader::map()
 {
     if (mp_typeof(*_current_pos) != MP_MAP)
-        throw mp_reader_error("map expected", *this);
+        throw mp_reader_error(string("map expected but get ") + ToString(mp_typeof(*_current_pos)), *this);
 
     auto head = _current_pos;
     if (mp_check(&_current_pos, _end))
@@ -94,7 +94,7 @@ mp_map_reader mp_reader::map()
 mp_array_reader mp_reader::array()
 {
     if (mp_typeof(*_current_pos) != MP_ARRAY)
-        throw mp_reader_error("array expected", *this);
+        throw mp_reader_error(string("array expected") + ToString(mp_typeof(*_current_pos)), *this);
 
     auto head = _current_pos;
     if (mp_check(&_current_pos, _end))
@@ -141,14 +141,14 @@ string_view mp_reader::to_string()
         return {}; // data() == nullptr
     }
 
-    throw mp_reader_error("string expected", *this);
+    throw mp_reader_error(string("string expected") + ToString(mp_typeof(*_current_pos)), *this);
 }
 
 mp_reader &mp_reader::operator>>(string &val)
 {
     string_view tmp = to_string();
     if (!tmp.data())
-        throw mp_reader_error("string expected", *this);
+        throw mp_reader_error("string expected but get nil", *this);
     val.assign(tmp.data(), tmp.size());
     return *this;
 }
@@ -239,4 +239,35 @@ mp_reader mp_array_reader::operator[](size_t ind) const
 size_t mp_array_reader::cardinality() const noexcept
 {
     return _cardinality;
+}
+
+const char* ToString(mp_type type)
+{
+    switch (type)
+    {
+    case MP_NIL:
+        return "nil";
+    case MP_UINT:
+        return "uint";
+    case MP_INT:
+        return "int";
+    case MP_STR:
+        return "string";
+    case MP_BIN:
+        return "binary";
+    case MP_ARRAY:
+        return "array";
+    case MP_MAP:
+        return "map";
+    case MP_BOOL:
+        return "bool";
+    case MP_FLOAT:
+        return "float";
+    case MP_DOUBLE:
+        return "double";
+    case MP_EXT:
+        return "ext";
+    default:
+        return "unkown";
+    }
 }

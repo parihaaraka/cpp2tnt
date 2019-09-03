@@ -60,6 +60,9 @@ void mp_writer::finalize()
     auto &c = _opened_containers.pop();
     char *head = _buf.data() + c.head_offset;
 
+    if (!_opened_containers.empty())
+        ++_opened_containers.top().items_count;
+
     if (static_cast<uint8_t>(*head) == 0xce)  // request head
     {
         size_t size = static_cast<size_t>(_buf.end - head);
@@ -132,6 +135,7 @@ void mp_writer::finalize()
     default:
         throw runtime_error("previously not implemented container cardinality");
     }
+
 }
 
 mp_writer& mp_writer::operator<<(const string_view &val)

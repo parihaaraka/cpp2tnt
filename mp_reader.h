@@ -5,6 +5,8 @@
 #include <stdexcept>
 #include <optional>
 #include <vector>
+#include <map>
+#include <string>
 
 #include "msgpuck/msgpuck.h"
 
@@ -14,6 +16,8 @@ class mp_array_reader;
 class mp_reader;
 
 std::string hex_dump(const char *begin, const char *end, const char *pos = nullptr);
+
+const char* ToString(mp_type type);
 
 /// messagepack parsing error
 class mp_reader_error : public std::runtime_error
@@ -108,6 +112,11 @@ public:
         }
     }
 
+    template <typename K,typename V>
+    mp_reader& operator>> (std::map<K,V>& val);
+    template <typename T>
+    mp_reader& operator>> (std::vector<T>& val);
+
 protected:
     const char *_begin, *_end, *_current_pos;
 };
@@ -160,13 +169,28 @@ private:
 };
 
 template <typename T>
-mp_reader& operator>> (mp_reader& reader, std::vector<T>& val)
+mp_reader& mp_reader::operator>> (std::vector<T>& val)
 {
-    auto vector = reader.array();
+    auto vector = array();
     val.resize(vector.cardinality());
     for (size_t i = 0; i < vector.cardinality(); ++i)
         vector >> val[i];
-    return  reader;
+    return  *this;
 }
+
+template <typename K,typename V>
+mp_reader& mp_reader::operator>> (std::map<K,V>& val)
+{
+    auto map = this->map();
+    for (size_t i = 0; i < map.cardinality(); ++i)
+    {
+        K k;
+        V v;
+        map >> k >> v;
+        val[k] = std::move(v);
+    }
+    return  *this;
+}
+
 
 #endif // MP_READER_H

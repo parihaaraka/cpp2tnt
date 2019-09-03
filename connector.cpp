@@ -9,6 +9,8 @@ namespace tnt
         : iproto_writer(*(connection*)this)
     {
         on_response(bind(&Connector::OnResponse, this, placeholders::_1));
+        on_closed(bind(&Connector::OnClosed, this));
+        on_opened(bind(&Connector::OnOpened, this));
     }
 
     void Connector::OnResponse(wtf_buffer &buf)
@@ -22,13 +24,14 @@ namespace tnt
                 Header header;
                 encoded_header[tnt::header_field::SYNC] >> header.sync;
                 encoded_header[tnt::header_field::CODE] >> header.errCode;
+                header.errCode &= 0x7fff;
                 auto handler = handlers_.find(header.sync);
                 if (handler == handlers_.end())
                     handle_error("unexpected response");
                 else
                 {
                     auto encoded_body = r.map();
-                    handler->second(header, encoded_body);
+                    handler->second.handler_(header, encoded_body, (void*)&handler->second.userData_);
                 }
             }
             catch(const mp_reader_error &e)
@@ -42,5 +45,29 @@ namespace tnt
         }
         input_processed();
     }
+
+    void Connector::AddOnOpened(SimpleEventCallbak cb_)
+    {
+        onOpenedHandlers_.push_back(cb_);
+    }
+
+    void Connector::AddOnClosed(SimpleEventCallbak cb_)
+    {
+        onClosedHandlers_.push_back(cb_);
+    }
+
+    void Connector::OnOpened()
+    {
+        for (auto& it : onOpenedHandlers_)
+            it();
+    }
+
+    void Connector::OnClosed()
+    {
+        handlers_.clear();
+        for (auto& it : onClosedHandlers_)
+            it();
+    }
+
 
 }

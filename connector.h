@@ -43,21 +43,26 @@ namespace tnt
 
         };
 
-        typedef fu2::unique_function<void(const Header& header, const mp_map_reader& body)> OnFuncResult;
+        typedef function<void(const Header& header, const mp_map_reader& body, void* userData)> OnFuncResult;
+        typedef function<void()> SimpleEventCallbak;
 
         Connector();
 
-        template<typename... Args>
-        void Call(string_view name, OnFuncResult&& resultHundler, Args... args)
+        template<typename UserData = void*, typename... Args>
+        void Call(string_view name, OnFuncResult&& resultHundler, UserData userData = (void*)nullptr, Args... args)
         {
+            static_assert (sizeof (HandlerData::userData_) >= sizeof (userData), "User data too big.");
             constexpr size_t countArgs = sizeof...(args);
             begin_call(name);
             begin_array(countArgs);
             write(args...);
             if (countArgs)
                 finalize();
-            finalize();
-            handlers_[last_request_id()] = move(resultHundler);
+            finalize();            
+            HandlerData handler;
+            handler.handler_ = move(resultHundler);
+            *((decltype (userData)*)&handler.userData_) = move(userData);
+            handlers_[last_request_id()] = move(handler);
             flush();
         }
 
@@ -65,16 +70,30 @@ namespace tnt
         {}
 
         template<typename T, typename... Args>
-        void write(T arg, Args... args)
+        void write(T& arg, Args... args)
         {
             *this<<arg;
             write(args...);
         }
 
+        void AddOnOpened(SimpleEventCallbak cb_);
+        void AddOnClosed(SimpleEventCallbak cb_);
+
     protected:
-        map<uint64_t, OnFuncResult> handlers_;
+        class HandlerData
+        {
+        public:
+            OnFuncResult handler_;
+            uint64_t userData_[2];
+        };
+
+        map<uint64_t, HandlerData> handlers_;
+        vector<SimpleEventCallbak> onOpenedHandlers_;
+        vector<SimpleEventCallbak> onClosedHandlers_;
 
         void OnResponse(wtf_buffer &buf);
+        void OnOpened();
+        void OnClosed();
 
     };
 
