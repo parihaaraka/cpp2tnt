@@ -176,9 +176,19 @@ public:
     /// Put ping request into the underlying buffer.
     void encode_ping_request();
 
-    /// Initiate call request. A caller must fill arguments afterwards and call finalize()
-    /// to finalize request.
+    /// Initiate call request. A caller must pass an array of arguments afterwards
+    /// and call finalize() to finalize request.
     void begin_call(std::string_view fn_name);
+
+    /// Call request all-in-one wrapper.
+    template <typename ...Ts>
+    void call(std::string_view fn_name, Ts const&... args)
+    {
+        begin_call(fn_name);
+        begin_array(sizeof...(args));
+        ((*this << args), ...);
+        finalize_all();
+    }
 
     /// Replace initial request size settled with begin_call() or encode_header()
     /// with actual value (counted untill now).
