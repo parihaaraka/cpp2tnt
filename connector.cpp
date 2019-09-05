@@ -32,6 +32,7 @@ namespace tnt
                 {
                     auto encoded_body = r.map();
                     handler->second.handler_(header, encoded_body, (void*)&handler->second.userData_);
+                    handlers_.erase(handler);
                 }
             }
             catch(const mp_reader_error &e)
@@ -58,12 +59,29 @@ namespace tnt
 
     void Connector::OnOpened()
     {
+        isConnected_ = true;
         for (auto& it : onOpenedHandlers_)
             it();
     }
 
     void Connector::OnClosed()
     {
+        isConnected_ = false;
+        wtf_buffer buff;
+        mp_writer writer(buff);
+        writer.begin_map(1);
+        writer<<int(tnt::response_field::ERROR)<<"disconected";
+        writer.finalize();
+        Header header;
+        header.errCode = 77;
+        mp_reader reader(buff);
+        mp_map_reader body = reader.map();
+        for (auto& it : handlers_)
+        {
+            mp_map_reader body2 = body;
+            header.sync = it.first;
+            it.second.handler_(header, body2, &it.second.userData_);
+        }
         handlers_.clear();
         for (auto& it : onClosedHandlers_)
             it();

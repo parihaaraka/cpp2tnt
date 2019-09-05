@@ -6,6 +6,7 @@
 #include "tntevloop.h"
 #include "mp_writer.h"
 #include "mp_reader.h"
+#include "proto.h"
 
 using namespace std;
 
@@ -51,19 +52,36 @@ namespace tnt
         template<typename UserData = void*, typename... Args>
         void Call(string_view name, OnFuncResult&& resultHundler, UserData userData = (void*)nullptr, Args... args)
         {
-            static_assert (sizeof (HandlerData::userData_) >= sizeof (userData), "User data too big.");
-            constexpr size_t countArgs = sizeof...(args);
-            begin_call(name);
-            begin_array(countArgs);
-            write(args...);
-            if (countArgs)
+            if (isConnected_)
+            {
+                static_assert (sizeof (HandlerData::userData_) >= sizeof (userData), "User data too big.");
+                constexpr size_t countArgs = sizeof...(args);
+                begin_call(name);
+                begin_array(countArgs);
+                write(args...);
+                if (countArgs)
+                    finalize();
                 finalize();
-            finalize();            
-            HandlerData handler;
-            handler.handler_ = move(resultHundler);
-            *((decltype (userData)*)&handler.userData_) = move(userData);
-            handlers_[last_request_id()] = move(handler);
-            flush();
+                HandlerData handler;
+                handler.handler_ = move(resultHundler);
+                *((decltype (userData)*)&handler.userData_) = move(userData);
+                handlers_[last_request_id()] = move(handler);
+                flush();
+            }
+            else
+            {
+                wtf_buffer buff;
+                mp_writer writer(buff);
+                writer.begin_map(1);
+                writer<<int(tnt::response_field::ERROR)<<"disconected";
+                writer.finalize();
+                Header header;
+                header.errCode = 77;
+                header.sync = 0;
+                mp_reader reader(buff);
+                mp_map_reader body = reader.map();
+                resultHundler(header, body, &userData);
+            }
         }
 
         void write()
@@ -90,6 +108,7 @@ namespace tnt
         map<uint64_t, HandlerData> handlers_;
         vector<SimpleEventCallbak> onOpenedHandlers_;
         vector<SimpleEventCallbak> onClosedHandlers_;
+        bool isConnected_ = false;
 
         void OnResponse(wtf_buffer &buf);
         void OnOpened();

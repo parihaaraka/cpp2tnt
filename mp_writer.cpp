@@ -40,6 +40,9 @@ mp_writer::mp_writer(wtf_buffer &buf) : _buf(buf) {}
 
 void mp_writer::begin_array(uint32_t max_cardinality)
 {
+    if (!_opened_containers.empty())
+        ++_opened_containers.top().items_count;
+
     if (max_cardinality)
         _opened_containers.push({_buf.size(), max_cardinality});
     _buf.end = mp_encode_array(_buf.end, max_cardinality);
@@ -47,6 +50,9 @@ void mp_writer::begin_array(uint32_t max_cardinality)
 
 void mp_writer::begin_map(uint32_t max_cardinality)
 {
+    if (!_opened_containers.empty())
+        ++_opened_containers.top().items_count;
+
     if (max_cardinality)
         _opened_containers.push({_buf.size(), max_cardinality * 2});
     _buf.end = mp_encode_map(_buf.end, max_cardinality);
@@ -59,9 +65,6 @@ void mp_writer::finalize()
 
     auto &c = _opened_containers.pop();
     char *head = _buf.data() + c.head_offset;
-
-    if (!_opened_containers.empty())
-        ++_opened_containers.top().items_count;
 
     if (static_cast<uint8_t>(*head) == 0xce)  // request head
     {
@@ -103,7 +106,7 @@ void mp_writer::finalize()
     else if (container_type == MP_MAP)
     {
         actual_cardinality = c.items_count / 2; // map cardinality
-        if (actual_cardinality == c.max_cardinality)
+        if (actual_cardinality * 2  == c.max_cardinality)
             return;
 
         // get current header size
