@@ -32,7 +32,7 @@ namespace tnt
                 {
                     auto encoded_body = r.map();
                     handler->second.handler_(header, encoded_body, (void*)&handler->second.userData_);
-                    handlers_.erase(handler);
+                    handlers_.erase(header.sync);
                 }
             }
             catch(const mp_reader_error &e)
