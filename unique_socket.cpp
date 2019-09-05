@@ -42,7 +42,7 @@ unique_socket::operator bool() const noexcept
     return _fd >= 0;
 }
 
-void unique_socket::close()
+void unique_socket::close() noexcept
 {
     if (_fd < 0)
         return;

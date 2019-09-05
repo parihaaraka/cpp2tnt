@@ -54,7 +54,7 @@ void mp_writer::begin_map(uint32_t max_cardinality)
         ++_opened_containers.top().items_count;
 
     if (max_cardinality)
-        _opened_containers.push({_buf.size(), max_cardinality * 2});
+        _opened_containers.push({_buf.size(), max_cardinality});
     _buf.end = mp_encode_map(_buf.end, max_cardinality);
 }
 
@@ -66,20 +66,8 @@ void mp_writer::finalize()
     auto &c = _opened_containers.pop();
     char *head = _buf.data() + c.head_offset;
 
-    if (static_cast<uint8_t>(*head) == 0xce)  // request head
-    {
-        size_t size = static_cast<size_t>(_buf.end - head);
-        if (!size)
-            return;
-
-        if (size > c.max_cardinality)
-            throw overflow_error("request size exceeded");
-        mp_store_u32(++head, static_cast<uint32_t>(size - 5));
-        return;
-    }
-
     // mp_encode_array() may reduce header's size if actual cardinality
-    // is smaller than initial value, so we update the header directly.
+    // is smaller than initial value, so we update the header directly
 
     uint32_t max_num_bytes = 0;
     uint32_t actual_cardinality = c.items_count;
@@ -105,6 +93,9 @@ void mp_writer::finalize()
     }
     else if (container_type == MP_MAP)
     {
+        if (c.items_count & 0x1)
+            throw runtime_error("odd number of map items");
+
         actual_cardinality = c.items_count / 2; // map cardinality
         if (actual_cardinality * 2  == c.max_cardinality)
             return;
@@ -259,4 +250,10 @@ void iproto_writer::finalize()
     }
 
     mp_writer::finalize();
+}
+
+void iproto_writer::finalize_all()
+{
+    while (!_opened_containers.empty())
+        finalize();
 }

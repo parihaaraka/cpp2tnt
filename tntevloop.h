@@ -29,8 +29,8 @@ namespace tnt
         static void OnTimer_(struct ev_loop* loop, ev_timer* w, int revents);
         void OnTimer(struct ev_loop* loop, ev_timer* w, int revents);
 
-        void OnSocketWatcherRequest(int mode);
-        void OnConnected();
+        void OnSocketWatcherRequest(int mode) noexcept;
+        void OnConnected() noexcept;
 
     };
 

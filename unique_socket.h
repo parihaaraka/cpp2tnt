@@ -14,7 +14,7 @@ public:
     operator bool() const noexcept;
     unique_socket& operator=(int fd);
     int handle() const noexcept;
-    void close();
+    void close() noexcept;
 private:
     int _fd = -1;
 };

@@ -19,7 +19,8 @@ namespace tnt
 
         socketWatcher_.data = this;
         ev_init(&socketWatcher_, OnSocketEvent_);
-        on_socket_watcher_request(bind(&TntEvLoop::OnSocketWatcherRequest, this, placeholders::_1));
+
+        on_socket_watcher_request([this](int mode)noexcept{this->OnSocketWatcherRequest(mode);});
 
         ev_async_init(&asyncNotifier_, OnAsyncNotifier_);
         asyncNotifier_.data = this;
@@ -33,7 +34,7 @@ namespace tnt
 
     }
 
-    void TntEvLoop::OnSocketWatcherRequest(int mode)
+    void TntEvLoop::OnSocketWatcherRequest(int mode) noexcept
     {
         int events = (mode & tnt::socket_state::read  ? EV_READ  : EV_NONE);
         events    |= (mode & tnt::socket_state::write ? EV_WRITE : EV_NONE);
@@ -77,7 +78,7 @@ namespace tnt
         acquire_notifications();
     }
 
-    void TntEvLoop::OnConnected()
+    void TntEvLoop::OnConnected() noexcept
     {
     }
 

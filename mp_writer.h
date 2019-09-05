@@ -5,7 +5,7 @@
 #include <array>
 #include <map>
 #include <tuple>
-#include "./third_party/msgpuck/msgpuck.h"
+#include "msgpuck/msgpuck.h"
 #include "wtf_buffer.h"
 
 namespace tnt {
@@ -23,10 +23,10 @@ public:
     /// Wrap writer object around specified buffer.
     mp_writer(wtf_buffer &buf);
     /// Put array header with <max_size> cardinality and move current position over it.
-    /// If max_cardinality > 0 then call end() to replace initial cardinality with actual value.
+    /// If max_cardinality > 0 then call finalize() to replace initial cardinality with actual value.
     void begin_array(uint32_t max_cardinality);
     /// Put map header with <max_size> cardinality and move current position over it.
-    /// If max_cardinality > 0 then call end() to replace initial cardinality with actual value.
+    /// If max_cardinality > 0 then call finalize() to replace initial cardinality with actual value.
     void begin_map(uint32_t max_cardinality);
     /// Replace initial cardinality settled with begin_array(), begin_map() with actual
     /// value (counted untill now). NB Do not finalize containers with zero initial size!
@@ -46,10 +46,10 @@ public:
                 ++_opened_containers.top().items_count;
             return *this;
         }
-        operator<<(val.value());
+        *this << val.value();
         return *this;
     }
-
+/*
     template <typename T>
     mp_writer& operator<< (const std::vector<T> &val) noexcept
     {
@@ -69,7 +69,7 @@ public:
         finalize();
         return *this;
     }
-
+*/
     template <typename T, typename = std::enable_if_t<std::is_integral_v<T> && sizeof(T) < 16>>
     mp_writer& operator<< (const T &val) noexcept
     {
@@ -89,6 +89,7 @@ public:
         return *this;
     }
 
+    /*
     template<class Tuple, size_t N>
     class TupleWriter
     {
@@ -124,6 +125,48 @@ public:
         begin_array(std::tuple_size<std::tuple<Args...>>::value);
         TupleWriter<std::tuple<Args...>, sizeof...(Args)>::out_tuple(this, value);
         finalize();
+        return *this;
+    }
+    */
+
+    template<typename... Args>
+    mp_writer& operator<< (const std::tuple<Args...> &val)
+    {
+        begin_array(std::tuple_size_v<std::tuple<Args...>>);
+        std::apply(
+            [this](const auto&... item)
+            {
+                ((*this << item), ...);
+            },
+            val
+        );
+        if (std::tuple_size_v<std::tuple<Args...>>)
+            finalize();
+        return *this;
+    }
+
+    template <typename T>
+    mp_writer& operator<< (const std::vector<T> &val)
+    {
+        begin_array(val.size());
+        for (const auto& elem: val)
+            *this << elem;
+        if (val.size())
+            finalize();
+        return *this;
+    }
+
+    template <typename KeyT, typename ValueT>
+    mp_writer& operator<< (const std::map<KeyT, ValueT> &val)
+    {
+        begin_map(val.size());
+        for (const auto& elem: val)
+        {
+            *this << elem.first;
+            *this << elem.second;
+        }
+        if (val.size())
+            finalize();
         return *this;
     }
 
@@ -183,7 +226,7 @@ public:
     /// Wrap writer object around specified buffer.
     iproto_writer(tnt::connection &cn, wtf_buffer &buf);
 
-    /// Initiate request of specified type. A caller must compose a body afterwards and call end()
+    /// Initiate request of specified type. A caller must compose a body afterwards and call finalize()
     /// to finalize request.
     void encode_header(tnt::request_type req_type);
     /// Put authentication request into the underlying buffer. User and password
@@ -194,13 +237,15 @@ public:
     /// Put ping request into the underlying buffer.
     void encode_ping_request();
 
-    /// Initiate call request. A caller must fill arguments afterwards and call end()
+    /// Initiate call request. A caller must fill arguments afterwards and call finalize()
     /// to finalize request.
     void begin_call(std::string_view fn_name);
 
     /// Replace initial request size settled with begin_call() or encode_header()
     /// with actual value (counted untill now).
     void finalize();
+    /// Finalize all non-finalized containers and/or call.
+    void finalize_all();
 
     using mp_writer::operator<<;
 
