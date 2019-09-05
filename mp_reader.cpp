@@ -178,6 +178,11 @@ string_view mp_reader::to_string()
     throw mp_reader_error("string expected, got " + mpuck_type_name(type), *this);
 }
 
+void mp_reader::rewind() noexcept
+{
+    _current_pos = _begin;
+}
+
 mp_reader &mp_reader::operator>>(string &val)
 {
     string_view tmp = to_string();

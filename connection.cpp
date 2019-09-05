@@ -34,7 +34,7 @@ connection::connection(std::string_view connection_string)
     : _current_cs(connection_string)
 {
     _next_to_send = _send_buffer.data();
-    _receive_buffer.on_clear = [this](){
+    _receive_buffer.on_clear = [this]() noexcept {
         _last_received_head_offset = 0;
         _detected_response_size = 0;
     };
@@ -89,7 +89,7 @@ void connection::process_receive_buffer()
     {
         // automatic authentication must be processed in a special way
         // (in contradistinction to manual authentication request)
-        if (_async_stage == async_stage::auth)
+        if (_state == state::authentication)
         {
             try
             {
@@ -99,13 +99,17 @@ void connection::process_receive_buffer()
                 if (!code)
                 {
                     _receive_buffer.clear();
-                    _async_stage = async_stage::idle;
+                    _state = state::connected;
                     _idle_seconds_counter = -1;
                     if (_connected_cb)
                     {
                         try
                         {
                             _connected_cb();
+                        }
+                        catch (const exception &e)
+                        {
+                            handle_error(e.what(), error::external);
                         }
                         catch (...) {}
                     }
@@ -182,7 +186,7 @@ connection::~connection()
 void connection::address_resolved(const addrinfo *addr_info)
 {
     // disconnect() during resolving prevents further connecting
-    if (_async_stage != async_stage::address_resolving)
+    if (_state != state::address_resolving)
         return;
 
     for (const addrinfo *addr = addr_info; addr; addr = addr->ai_next)
@@ -210,7 +214,7 @@ void connection::address_resolved(const addrinfo *addr_info)
         setsockopt(s.handle(), SOL_TCP, TCP_USER_TIMEOUT, &opt, sizeof(opt));
         // bad luck to get errors here, but why would we stop connecting?
 
-        _async_stage = async_stage::connecting;
+        _state = state::connecting;
         if (connect(s.handle(), addr->ai_addr, addr->ai_addrlen) != -1)
         {
             _socket = move(s);
@@ -231,13 +235,16 @@ void connection::address_resolved(const addrinfo *addr_info)
         break;
     }
 
-    _async_stage = async_stage::none;
+    _state = state::disconnected;
     _idle_seconds_counter = 0; // reconnect soon
 }
 
 void connection::open()
 {
-    if (_async_stage != async_stage::none)
+    if (_state == state::connected)
+        return;
+
+    if (_state != state::disconnected)
     {
         handle_error("unable to connect, connection is busy", error::bad_call_sequence);
         return;
@@ -258,7 +265,7 @@ void connection::open()
         // * eventfd - linux only
         // so don't try to implement resolving timeout
 
-        _async_stage = async_stage::address_resolving;
+        _state = state::address_resolving;
         _address_resolver = std::thread([this]()
         {
             addrinfo *addr_info = nullptr;
@@ -292,7 +299,7 @@ void connection::open()
                 _notification_handlers.push_back([message, this](){
                     if (_address_resolver.joinable())
                         _address_resolver.join();
-                    _async_stage = async_stage::none;
+                    _state = state::disconnected;
                     handle_error(message, error::getaddr);
                     // retry because we may fix dns
                     _idle_seconds_counter = 0;
@@ -318,7 +325,7 @@ void connection::open()
              _cs_parts.unix_socket_path.end(),
              addr.sun_path);
 
-        _async_stage = async_stage::connecting;
+        _state = state::connecting;
         if (connect(s.handle(), reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) != -1)
         {
             _socket = move(s);
@@ -344,11 +351,11 @@ void connection::open()
     }
 }
 
-void connection::close(bool call_disconnect_handler, bool reconnect_soon)
+void connection::close(bool call_disconnect_handler, bool reconnect_soon) noexcept
 {
-    auto prev_async_stage = _async_stage;
+    auto prev_async_stage = _state;
     _greeting.clear();
-    _async_stage = async_stage::none;
+    _state = state::disconnected;
     _idle_seconds_counter = reconnect_soon ? 0 : -1;
     _request_id = 0;
 
@@ -367,13 +374,18 @@ void connection::close(bool call_disconnect_handler, bool reconnect_soon)
 
     // remove partial response
     _detected_response_size = 0;
+    // do not throw because never expand here
     _receive_buffer.resize(_last_received_head_offset);
 
-    if (prev_async_stage != async_stage::connecting && _disconnected_cb && call_disconnect_handler)
+    if (prev_async_stage != state::connecting && _disconnected_cb && call_disconnect_handler)
     {
         try
         {
             _disconnected_cb();
+        }
+        catch (const exception &e)
+        {
+            handle_error(e.what(), error::external);
         }
         catch (...) {}
     }
@@ -381,7 +393,7 @@ void connection::close(bool call_disconnect_handler, bool reconnect_soon)
 
 void connection::set_connection_string(string_view connection_string)
 {
-    if (_async_stage != async_stage::none)
+    if (_state != state::disconnected)
         throw runtime_error("unable to reset connection string on busy connection");
     _current_cs = connection_string;
 }
@@ -424,6 +436,16 @@ uint64_t connection::next_request_id() noexcept
 const cs_parts &connection::connection_string_parts() const noexcept
 {
     return _cs_parts;
+}
+
+bool connection::is_opened() const noexcept
+{
+    return _state == state::connected;
+}
+
+bool connection::is_closed() const noexcept
+{
+    return _state == state::disconnected;
 }
 
 void connection::cork() noexcept
@@ -469,7 +491,7 @@ void connection::tick_1sec() noexcept
 {
     if (_idle_seconds_counter >= 0 && ++_idle_seconds_counter >= GENERAL_TIMEOUT)
     {
-        if (_async_stage == async_stage::none) // waiting for reconnect
+        if (_state == state::disconnected) // waiting for reconnect
         {
             open();
         }
@@ -553,7 +575,7 @@ void connection::read()
     }
     while (true);
 
-    if (_async_stage == async_stage::connecting) // greeting
+    if (_state == state::connecting) // greeting
     {
         if (_receive_buffer.size() < tnt::GREETING_SIZE)
             return; // continue to read
@@ -563,21 +585,34 @@ void connection::read()
 
         if (!_cs_parts.user.empty() || _cs_parts.user != "guest" || !_cs_parts.password.empty())
         {
-            _async_stage = async_stage::auth;
-            iproto_writer dst(*this);
+            _state = state::authentication;
+
+            // just to be sure that the buffer is not littered by a caller who ignored on_closed event
+            _send_buffer.clear();
+            _next_to_send = _send_buffer.data();
+
+            iproto_writer dst(*this, _send_buffer); // skip _output buffer
             dst.encode_auth_request();
-            flush();
+            write();
+
+            //iproto_writer dst(*this);
+            //dst.encode_auth_request();
+            //flush();
         }
         else
         {
             // no need to authenticate
-            _async_stage = async_stage::idle;
+            _state = state::connected;
             _idle_seconds_counter = -1;
             if (_connected_cb)
             {
                 try
                 {
                     _connected_cb();
+                }
+                catch (const exception &e)
+                {
+                    handle_error(e.what(), error::external);
                 }
                 catch (...) {}
             }
@@ -589,9 +624,9 @@ void connection::read()
     process_receive_buffer();
 }
 
-void connection::write()
+void connection::write() noexcept
 {
-    if (_async_stage == async_stage::connecting)
+    if (_state == state::connecting)
     {
         int opt = 0;
         socklen_t len = sizeof(opt);

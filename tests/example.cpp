@@ -88,7 +88,7 @@ int main(int argc, char *argv[])
              << "  db error code: " << db_error << endl;
     });
 
-    cn.on_socket_watcher_request([loop, &socket_watcher](int mode)
+    cn.on_socket_watcher_request([loop, &socket_watcher](int mode) noexcept
     {
         int events = (mode & tnt::socket_state::read  ? EV_READ  : EV_NONE);
         events    |= (mode & tnt::socket_state::write ? EV_WRITE : EV_NONE);

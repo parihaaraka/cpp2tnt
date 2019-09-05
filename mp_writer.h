@@ -183,6 +183,8 @@ public:
     /// Replace initial request size settled with begin_call() or encode_header()
     /// with actual value (counted untill now).
     void finalize();
+    /// Finalize all non-finalized containers and/or call.
+    void finalize_all();
 
     using mp_writer::operator<<;
 

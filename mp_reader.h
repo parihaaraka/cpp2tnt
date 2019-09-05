@@ -28,7 +28,6 @@ class mp_reader
 public:
     mp_reader(const wtf_buffer &buf);
     mp_reader(const char *begin, const char *end);
-    mp_reader(const mp_reader &) = default;
     const char* begin() const noexcept;
     const char* end() const noexcept;
     const char* pos() const noexcept;
@@ -45,6 +44,8 @@ public:
     mp_reader iproto_message();
     /// Extract string data from current encoded string and move current position to next item.
     std::string_view to_string();
+    /// Reset current reading position back to the beginning.
+    void rewind() noexcept;
 
     /// true if not empty
     operator bool() const noexcept;
@@ -129,7 +130,6 @@ protected:
 class mp_map_reader : public mp_reader
 {
 public:
-    mp_map_reader(const mp_map_reader &) = default;
     /// Return reader for a value with specified key.
     /// Current parsing position stays unchanged. Throw if key is not found.
     mp_reader operator[](int64_t key) const;
@@ -148,7 +148,6 @@ private:
 class mp_array_reader : public mp_reader
 {
 public:
-    mp_array_reader(const mp_array_reader &) = default;
     /// Return reader for a value with specified index.
     /// Current parsing position stays unchanged. Throw if index out of bounds.
     mp_reader operator[](size_t ind) const;

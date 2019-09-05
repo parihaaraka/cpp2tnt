@@ -26,7 +26,8 @@ enum class error {
     timeout,              ///< operation timeout
     auth,                 ///< authentication error
     closed_by_peer,       ///< connection closed by peer
-    unexpected_data       ///< messagepack parse error and so on
+    unexpected_data,      ///< messagepack parse error and so on
+    external              ///< caller error (exception within callback)
 };
 
 /// Socket state to poll for.
@@ -70,14 +71,14 @@ private:
     bool _is_corked = false;
     size_t _uncorked_size = 0;          ///< size of data within output buffer
 
-    enum class async_stage {
-        none,
+    enum class state {
+        disconnected,
         address_resolving,
         connecting,
-        auth,
-        idle
+        authentication,
+        connected
     };
-    async_stage _async_stage = async_stage::none;
+    state _state = state::disconnected;
 
     // move-only data must pass through this queue
     std::vector<fu2::unique_function<void()>> _notification_handlers, _tmp_notification_handlers;
@@ -93,7 +94,7 @@ private:
                       uint32_t db_error = 0) noexcept;
 
     // need to capture watcher, so movable functions preferred
-    fu2::unique_function<void(int mode)> _socket_watcher_request_cb;
+    fu2::unique_function<void(int mode) noexcept> _socket_watcher_request_cb;
     fu2::unique_function<void()> _on_notify_request;
     // exact connection specific callbacks, so movable function preferred
     fu2::unique_function<void(wtf_buffer &buf)> _response_cb;
@@ -105,7 +106,7 @@ public:
     ~connection();
 
     void open();
-    void close(bool call_disconnect_handler = true, bool reconnect_soon = false);
+    void close(bool call_disconnect_handler = true, bool reconnect_soon = false) noexcept;
     void set_connection_string(std::string_view connection_string);
     /** Thread-safe method to initiate a handler call in the connector's thread */
     void push_handler(fu2::unique_function<void()> &&handler);
@@ -118,6 +119,8 @@ public:
     uint64_t last_request_id() const noexcept;
     uint64_t next_request_id() noexcept;
     const cs_parts& connection_string_parts() const noexcept;
+    bool is_opened() const noexcept;
+    bool is_closed() const noexcept;
 
     /** Prevent further requests from being sent immediately upon creation. */
     void cork() noexcept;
@@ -164,7 +167,7 @@ public:
     void read();
 
     /** External socket watcher must call this function on ready write state detected. */
-    void write();
+    void write() noexcept;
 
     /** Set callback to pass reponses to. */
     connection& on_response(decltype(_response_cb) &&handler);
