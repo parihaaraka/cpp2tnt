@@ -61,6 +61,7 @@ private:
     size_t _detected_response_size = 0; ///< current response size (to detect it's being fetched en bloc)
     void process_receive_buffer();
     void pass_response_to_caller();
+    void watch_socket(socket_state mode) noexcept;
 
     wtf_buffer _output_buffer;          ///< actually corked buffer
     wtf_buffer _send_buffer;            ///< sending data
@@ -70,6 +71,10 @@ private:
     uint64_t _request_id = 0;           ///< sync_id in terms of tnt
     bool _is_corked = false;
     size_t _uncorked_size = 0;          ///< size of data within output buffer
+
+    // TMP
+    time_t _last_write_time = 0;
+    socket_state _prev_watch_mode = socket_state::none;
 
     enum class state {
         disconnected,

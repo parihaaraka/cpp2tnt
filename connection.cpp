@@ -21,7 +21,7 @@ static std::string errno2str()
     strerror_r(errno, buf, sizeof(buf));
     return buf;
 #else
-    return strerror_r(errno, buf, sizeof(buf));;
+    return strerror_r(errno, buf, sizeof(buf));
 #endif
 }
 
@@ -176,6 +176,12 @@ void connection::pass_response_to_caller()
     }
 }
 
+void connection::watch_socket(socket_state mode) noexcept
+{
+    _prev_watch_mode = mode;
+    _socket_watcher_request_cb(mode);
+}
+
 connection::~connection()
 {
     close();
@@ -218,14 +224,14 @@ void connection::address_resolved(const addrinfo *addr_info)
         if (connect(s.handle(), addr->ai_addr, addr->ai_addrlen) != -1)
         {
             _socket = move(s);
-            _socket_watcher_request_cb(socket_state::read); //wait for greeting
+            watch_socket(socket_state::read); //wait for greeting
             return;
         }
 
         if (errno == EINPROGRESS)
         {
             _socket = move(s);
-            _socket_watcher_request_cb(socket_state::write);
+            watch_socket(socket_state::write);
             _idle_seconds_counter = 0;
             return;
         }
@@ -329,14 +335,14 @@ void connection::open()
         if (connect(s.handle(), reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) != -1)
         {
             _socket = move(s);
-            _socket_watcher_request_cb(socket_state::read); //wait for greeting
+            watch_socket(socket_state::read); //wait for greeting
             return;
         }
 
         if (errno == EAGAIN)
         {
             _socket = move(s);
-            _socket_watcher_request_cb(socket_state::write);
+            watch_socket(socket_state::write);
             _idle_seconds_counter = 0;
             return;
         }
@@ -362,7 +368,7 @@ void connection::close(bool call_disconnect_handler, bool reconnect_soon) noexce
     if (!_socket)
         return;
 
-    _socket_watcher_request_cb(socket_state::none);
+    watch_socket(socket_state::none);
     _socket.close();
 
     // Clear all sending buffers. A caller must resume its work
@@ -502,6 +508,18 @@ void connection::tick_1sec() noexcept
             _idle_seconds_counter = 0; // reconnect soon
         }
     }
+
+    // TMP
+    else if (is_opened() && _uncorked_size && std::time(nullptr) - _last_write_time > 10)
+    {
+        size_t bytes_to_send = static_cast<size_t>(_send_buffer.end - _next_to_send);
+        handle_error("~~~~~ uncorked data is stuck! ~~~~~"
+                     "\ncurrent socket watch mode: " +
+                     std::to_string(_prev_watch_mode) +
+                     "\nbytes_to_send: " + std::to_string(bytes_to_send) +
+                     "\nuncorked_size: " + std::to_string(_uncorked_size));
+        flush();
+    }
 }
 
 void connection::acquire_notifications()
@@ -639,12 +657,23 @@ void connection::write() noexcept
             _idle_seconds_counter = 0; // reconnect soon
             return;
         }
-        _socket_watcher_request_cb(socket_state::read);
+        watch_socket(socket_state::read);
         return;
     }
 
     assert(_send_buffer.end >= _next_to_send);
     size_t bytes_to_send = static_cast<size_t>(_send_buffer.end - _next_to_send);
+
+    // TMP
+    if (bytes_to_send <= 0 && _uncorked_size)
+    {
+        handle_error("~~~~~ wtf inside write() ?! ~~~~~"
+                     "\ncurrent socket watch mode: " +
+                     std::to_string(_prev_watch_mode) +
+                     "\nbytes_to_send: " + std::to_string(bytes_to_send) +
+                     "\nuncorked_size: " + std::to_string(_uncorked_size));
+    }
+
     while (bytes_to_send > 0)
     {
         ssize_t r = send(_socket.handle(),
@@ -662,11 +691,12 @@ void connection::write() noexcept
             _idle_seconds_counter = 0; // reconnect soon
             return;
         }
+        _last_write_time = std::time(nullptr);
         bytes_to_send -= static_cast<size_t>(r);
-        if (bytes_to_send)
-            _next_to_send += r;
-        // sending buffer is empty, so acquire uncorked data from output buffer
-        else if (_uncorked_size)
+        _next_to_send += r;
+
+        // _send_buffer is done, _output_buffer has data to send
+        if (!bytes_to_send && _uncorked_size)
         {
             _send_buffer.clear();
             _send_buffer.swap(_output_buffer);
@@ -681,15 +711,11 @@ void connection::write() noexcept
                 _send_buffer.resize(bytes_to_send);
             }
         }
-        else
-        {
-            _next_to_send += r;
-        }
     }
 
-    _socket_watcher_request_cb(bytes_to_send ?
-                                   socket_state::read_write :
-                                   socket_state::read);
+    watch_socket(bytes_to_send ?
+                     socket_state::read_write :
+                     socket_state::read);
 }
 
 connection &connection::on_response(decltype(_response_cb) &&handler)
