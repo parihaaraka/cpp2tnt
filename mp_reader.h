@@ -22,6 +22,8 @@ public:
     explicit mp_reader_error(const std::string &msg, const mp_reader &reader);
 };
 
+std::string mpuck_type_name(mp_type type);
+
 /// messagepack reader
 class mp_reader
 {
@@ -80,7 +82,7 @@ public:
                 val = mp_decode_bool(&_current_pos);
                 return *this;
             }
-            throw mp_reader_error("boolean expected", *this);
+            throw mp_reader_error("boolean expected, got " + mpuck_type_name(type), *this);
         }
         else
         {
@@ -104,7 +106,7 @@ public:
             }
             else
             {
-                throw mp_reader_error("integer expected", *this);
+                throw mp_reader_error("integer expected, got " + mpuck_type_name(type), *this);
             }
             throw mp_reader_error("value overflow", *this);
         }

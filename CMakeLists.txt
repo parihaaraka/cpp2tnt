@@ -13,6 +13,3 @@ file(GLOB LIB_FILES *.cpp third_party/*.c)
 add_library(${PROJECT_NAME} STATIC ${LIB_FILES})
 target_include_directories(${PROJECT_NAME} PUBLIC . third_party)
 target_link_libraries(${PROJECT_NAME} msgpuck)
-
-add_executable(example "tests/example.cpp")
-target_link_libraries(example ${PROJECT_NAME} ev pthread msgpuck)

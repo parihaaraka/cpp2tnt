@@ -32,7 +32,7 @@ std::string hex_dump(const char *begin, const char *end, const char *pos)
     return res;
 }
 
-static string mpuck_type_name(mp_type type)
+string mpuck_type_name(mp_type type)
 {
     switch (type)
     {
