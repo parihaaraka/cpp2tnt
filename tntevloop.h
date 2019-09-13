@@ -2,13 +2,12 @@
 
 
 #include <ev.h>
-
-#include "connection.h"
+#include "connector.h"
 
 namespace tnt
 {
 
-    class TntEvLoop : public connection
+    class TntEvLoop : public Connector
     {
     public:
         TntEvLoop();

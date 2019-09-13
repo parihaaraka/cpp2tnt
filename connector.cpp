@@ -15,6 +15,7 @@ namespace tnt
 
     void Connector::OnResponse(wtf_buffer &buf)
     {
+        isProcessingReply_ = true;
         mp_reader bunch(buf);
         while (mp_reader r = bunch.iproto_message())
         {
@@ -32,7 +33,8 @@ namespace tnt
                 {
                     auto encoded_body = r.map();
                     handler->second.handler_(header, encoded_body, (void*)&handler->second.userData_);
-                    handlers_.erase(header.sync);
+                    //handlers_.erase(header.sync);
+                    handlers_.erase(handler);
                 }
             }
             catch(const mp_reader_error &e)
@@ -45,6 +47,12 @@ namespace tnt
             }
         }
         input_processed();
+        isProcessingReply_ = false;
+        if (isNeedsClose_)
+        {
+            connection::close(true, isNeedsReconnect_);
+            isNeedsClose_ = false;
+        }
     }
 
     void Connector::AddOnOpened(SimpleEventCallbak cb_)
@@ -87,5 +95,15 @@ namespace tnt
             it();
     }
 
+    void Connector::close(bool reconnect_soon) noexcept
+    {
+        if (isProcessingReply_)
+        {
+            isNeedsClose_ = true;
+            isNeedsReconnect_ = reconnect_soon;
+        }
+        else
+            connection::close(true, reconnect_soon);
+    }
 
 }

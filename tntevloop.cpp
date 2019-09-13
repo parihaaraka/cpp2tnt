@@ -10,7 +10,7 @@ namespace tnt
 
     TntEvLoop::TntEvLoop()
     {
-        on_opened(bind(&TntEvLoop::OnConnected, this));
+        AddOnOpened(bind(&TntEvLoop::OnConnected, this));
     }
 
     void TntEvLoop::Attach(struct ev_loop* loop)
@@ -59,12 +59,12 @@ namespace tnt
     {
         (void)loop;(void)w;
         if (revents & EV_ERROR)
-            handle_error("EV_ERROR soket state received");
+            connection::handle_error("EV_ERROR soket state received");
 
         if (revents & EV_WRITE)
-            write();
+            connection::write();
         if (revents & EV_READ)
-            read();
+            connection::read();
     }
 
     void TntEvLoop::OnAsyncNotifier_(struct ev_loop* loop, ev_async* w, int revents)

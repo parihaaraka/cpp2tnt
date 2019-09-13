@@ -1,12 +1,12 @@
 #pragma once
 
 #include <string_view>
-#include <map>
+#include <unordered_map>
 
-#include "tntevloop.h"
 #include "mp_writer.h"
 #include "mp_reader.h"
 #include "proto.h"
+#include "connection.h"
 
 using namespace std;
 
@@ -30,7 +30,7 @@ namespace tnt
     //template<typename... Args>
     //void write(){};
 
-    class Connector : public TntEvLoop, public iproto_writer
+    class Connector : public connection, public iproto_writer
     {
     public:
         class FuncParamTuple
@@ -96,6 +96,7 @@ namespace tnt
 
         void AddOnOpened(SimpleEventCallbak cb_);
         void AddOnClosed(SimpleEventCallbak cb_);
+        void close(bool reconnect_soon = false) noexcept;
 
     protected:
         class HandlerData
@@ -105,7 +106,7 @@ namespace tnt
             uint64_t userData_[2];
         };
 
-        map<uint64_t, HandlerData> handlers_;
+        unordered_map<uint64_t, HandlerData> handlers_;
         vector<SimpleEventCallbak> onOpenedHandlers_;
         vector<SimpleEventCallbak> onClosedHandlers_;
         bool isConnected_ = false;
@@ -113,6 +114,10 @@ namespace tnt
         void OnResponse(wtf_buffer &buf);
         void OnOpened();
         void OnClosed();
+
+        bool isNeedsClose_ = false;
+        bool isNeedsReconnect_ = false;
+        bool isProcessingReply_ = false;
 
     };
 
