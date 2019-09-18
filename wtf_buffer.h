@@ -20,6 +20,10 @@ public:
     void swap(wtf_buffer &other) noexcept;
     char *end; // let msgpuck to write directly
     std::function<void()> on_clear;
+    wtf_buffer(wtf_buffer &&);
+    wtf_buffer& operator= (wtf_buffer &&);
+    wtf_buffer(const wtf_buffer &) = delete;
+    wtf_buffer& operator= (const wtf_buffer &) = delete;
 private:
     std::vector<char> _buf;
 };

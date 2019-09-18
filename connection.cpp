@@ -14,6 +14,9 @@
 
 #define GENERAL_TIMEOUT 10
 
+fu2::unique_function<void(tnt::connection*)> tnt::connection::_on_construct_all_cb;
+fu2::unique_function<void(tnt::connection*)> tnt::connection::_on_destruct_all_cb;
+
 static std::string errno2str()
 {
     char buf[128];
@@ -38,6 +41,9 @@ connection::connection(std::string_view connection_string)
         _last_received_head_offset = 0;
         _detected_response_size = 0;
     };
+
+    if (_on_construct_all_cb)
+        _on_construct_all_cb(this);
 }
 
 void connection::handle_error(string_view message, error internal_error, uint32_t db_error) noexcept
@@ -187,6 +193,19 @@ connection::~connection()
     close();
     if (_address_resolver.joinable())
         _address_resolver.join();
+
+    try
+    {
+        if (_on_destruct_cb)
+            _on_destruct_cb(this);
+        else if (_on_destruct_all_cb)
+            _on_destruct_all_cb(this);
+    }
+    catch (const exception &e)
+    {
+        handle_error(e.what(), error::external);
+    }
+    catch (...) {}
 }
 
 void connection::address_resolved(const addrinfo *addr_info)
@@ -728,6 +747,21 @@ connection& connection::on_notify_request(decltype(_on_notify_request) &&handler
 {
     _on_notify_request = move(handler);
     return *this;
+}
+
+void connection::on_destruct_all(decltype(_on_destruct_all_cb) handler)
+{
+    _on_destruct_all_cb = move(handler);
+}
+
+void connection::on_destruct(decltype(_on_destruct_cb) handler)
+{
+    _on_destruct_cb = move(handler);
+}
+
+void connection::on_construct_all(decltype(_on_construct_all_cb) handler)
+{
+    _on_construct_all_cb = move(handler);
 }
 
 } // namespace tnt

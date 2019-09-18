@@ -106,6 +106,10 @@ private:
     fu2::unique_function<void()> _connected_cb;
     fu2::unique_function<void()> _disconnected_cb;
 
+    static fu2::unique_function<void(connection*)> _on_construct_all_cb;
+    static fu2::unique_function<void(connection*)> _on_destruct_all_cb;
+    fu2::unique_function<void(connection*)> _on_destruct_cb;
+
 public:
     connection(std::string_view connection_string = {});
     ~connection();
@@ -186,6 +190,12 @@ public:
      */
     connection& on_notify_request(decltype(_on_notify_request) &&handler);
 
+    /** Callback to be called on connection instantiation. Used in ev4cpp2tnt. */
+    static void on_construct_all(decltype(_on_construct_all_cb) handler);
+    /** Callback to be called on connection destruction. Used in ev4cpp2tnt. */
+    static void on_destruct_all(decltype(_on_destruct_all_cb) handler);
+    /** Single instance-wide callback to be called on connection destruction. */
+    void on_destruct(decltype(_on_destruct_cb) handler);
 };
 
 } // namespace tnt

@@ -8,6 +8,7 @@ set(CMAKE_COLOR_MAKEFILE   ON)
 set(CMAKE_CXX_STANDARD 17)
 
 add_executable(${PROJECT_NAME} "example.cpp")
+set(CPP2TNT_LIBEV true) # compile libev wrapper
 add_subdirectory("${CMAKE_SOURCE_DIR}/.." build)
 target_link_libraries(${PROJECT_NAME} cpp2tnt ev pthread msgpuck)
 

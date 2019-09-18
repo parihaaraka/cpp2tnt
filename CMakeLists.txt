@@ -9,6 +9,10 @@ add_subdirectory(third_party/msgpuck)
 
 set (CMAKE_CXX_STANDARD 17)
 file(GLOB LIB_FILES *.cpp third_party/*.c)
+if(NOT DEFINED CPP2TNT_LIBEV)
+    message("libev-related sources disabled (define CPP2TNT_LIBEV to enable it)")
+    list(FILTER LIB_FILES EXCLUDE REGEX ".*/ev4cpp2tnt.cpp$")
+endif()
 
 add_library(${PROJECT_NAME} STATIC ${LIB_FILES})
 target_include_directories(${PROJECT_NAME} PUBLIC . third_party)
