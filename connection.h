@@ -114,7 +114,7 @@ public:
     connection(std::string_view connection_string = {});
     ~connection();
 
-    void open();
+    void open(int delay = 0);
     void close(bool call_disconnect_handler = true, bool reconnect_soon = false) noexcept;
     void set_connection_string(std::string_view connection_string);
     /** Thread-safe method to initiate a handler call in the connector's thread */

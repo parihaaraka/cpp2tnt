@@ -264,7 +264,7 @@ void connection::address_resolved(const addrinfo *addr_info)
     _idle_seconds_counter = 0; // reconnect soon
 }
 
-void connection::open()
+void connection::open(int delay)
 {
     if (_state == state::connected)
         return;
@@ -272,6 +272,12 @@ void connection::open()
     if (_state != state::disconnected)
     {
         handle_error("unable to connect, connection is busy", error::bad_call_sequence);
+        return;
+    }
+
+    if (delay > 0)
+    {
+        _idle_seconds_counter = delay;
         return;
     }
 
