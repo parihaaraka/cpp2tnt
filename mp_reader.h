@@ -6,6 +6,8 @@
 #include <optional>
 #include <vector>
 #include <map>
+#include <memory>
+#include <functional>
 #include "msgpuck/msgpuck.h"
 
 class wtf_buffer;
@@ -34,8 +36,10 @@ public:
     const char* end() const noexcept;
     const char* pos() const noexcept;
     /// Skip current encoded item (in case of array/map skips all its elements).
+    void fast_skip();
+    /// Skip current encoded item (in case of array/map skips all its elements) and check content.
     void skip();
-    /// Skip current encoded item and verify its type.
+    /// Skip current encoded item, verify its type and check content.
     void skip(mp_type type, bool nullable = false);
     /// Return current encoded map within separate reader and move current position to next item.
     mp_map_reader map();
@@ -44,8 +48,8 @@ public:
     /// Return current encoded iproto message (header + body) within separate reader
     /// and move current position to next item.
     mp_reader iproto_message();
-    /// Extract string data from current encoded string and move current position to next item.
-    std::string_view to_string();
+    /// Extract and serialize value to string (nil -> 'null') and move current position to next item.
+    std::string to_string();
     /// Reset current reading position back to the beginning.
     void rewind() noexcept;
 
@@ -65,7 +69,7 @@ public:
             return *this;
         }
         T non_opt;
-        operator>>(non_opt);
+        *this >> non_opt;
         val = std::move(non_opt);
         return *this;
     }
@@ -124,6 +128,69 @@ public:
     template <typename... Args>
     mp_reader& operator>> (std::tuple<Args&...> val);
 
+    template <typename T>
+    T value()
+    {
+        T res;
+        *this >> res;
+        return res;
+    }
+
+    template <typename T>
+    bool equals(const T &val) const
+    {
+        auto begin = _current_pos;
+        auto end = begin;
+        mp_next(&end);
+        mp_reader tmp(begin, end);
+
+        auto type = mp_typeof(*_current_pos);
+        if constexpr (std::is_same_v<T, bool>)
+            return type == MP_BOOL && val == tmp.value<T>();
+
+        else if constexpr (std::is_enum_v<T> || (std::is_integral_v<T> && sizeof(T) < 16))
+        {
+            if (type == MP_UINT && val >= 0)
+            {
+                uint64_t res = mp_decode_uint(&begin);
+                return res == static_cast<uint64_t>(val);
+            }
+            else if (type == MP_INT)
+            {
+                int64_t res = mp_decode_int(&begin);
+                if (res < 0 && val < 0)
+                    return res == val;
+                if (res >= 0 && val >= 0)
+                    return static_cast<uint64_t>(res) == static_cast<uint64_t>(val);
+            }
+        }
+        else if constexpr (std::is_same_v<T, std::string_view>)
+        {
+            if (val.data() == nullptr)
+                return type == MP_NIL;
+            else if (type == MP_STR)
+                return val == tmp.value<std::string_view>();
+        }
+        else if constexpr (std::is_same_v<T, std::string>)
+        {
+            if (type == MP_STR)
+                return val == tmp.value<std::string_view>();
+        }
+        else if constexpr (std::is_same_v<typename std::decay_t<T>, char *>)
+        {
+            if (val == nullptr)
+                return type == MP_NIL;
+            else if (type == MP_STR)
+                return val == tmp.value<std::string_view>();
+        }
+        else
+        {
+            throw mp_reader_error("unsupported key type to find within map", *this);
+        }
+
+        return false;
+    }
+
 protected:
     const char *_begin, *_end, *_current_pos;
 };
@@ -132,14 +199,41 @@ protected:
 class mp_map_reader : public mp_reader
 {
 public:
-    /// Return reader for a value with specified key.
-    /// Current parsing position stays unchanged. Throw if key is not found.
-    mp_reader operator[](int64_t key) const;
-    /// Return reader for a value with specified key.
-    /// Current parsing position stays unchanged. Returns empty reader if key is not found.
-    mp_reader find(int64_t key) const;
+    /// Return reader for the value with a specified key.
+    /// Current parsing position stays unchanged. Throws if the key is not found.
+    template <typename T>
+    mp_reader operator[](const T &key) const
+    {
+        mp_reader res = find(key);
+        if (!res)
+            throw mp_reader_error("key not found", *this);
+        return res;
+    }
+    /// Return reader for the value with a specified key.
+    /// Current parsing position stays unchanged. Returns empty reader if the key is not found.
+    template <typename T>
+    mp_reader find(const T &key) const
+    {
+        mp_reader tmp(_begin, _end); // to keep it const
+        auto n = _cardinality;
+        while (n-- > 0)
+        {
+            bool found = tmp.equals(key);
+            tmp.fast_skip(); // skip a key
+
+            auto value_begin = tmp.pos();
+            tmp.fast_skip();
+            auto value_end = tmp.pos();
+
+            if (found)
+                return {value_begin, value_end};
+        }
+        return {nullptr, nullptr};
+    }
+
     /// The map's cardinality.
     size_t cardinality() const noexcept;
+
 private:
     friend class mp_reader;
     mp_map_reader(const char *begin, const char *end, size_t cardinality);
@@ -151,7 +245,7 @@ class mp_array_reader : public mp_reader
 {
 public:
     /// Return reader for a value with specified index.
-    /// Current parsing position stays unchanged. Throw if index out of bounds.
+    /// Current parsing position stays unchanged. Throws if specified index out of bounds.
     mp_reader operator[](size_t ind) const;
     /// The array's cardinality.
     size_t cardinality() const noexcept;
@@ -167,6 +261,7 @@ public:
             mp_reader::operator>>(val);
         return *this;
     }
+
 private:
     friend class mp_reader;
     mp_array_reader(const char *begin, const char *end, size_t cardinality);

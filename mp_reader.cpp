@@ -94,6 +94,11 @@ const char* mp_reader::pos() const noexcept
     return _current_pos;
 }
 
+void mp_reader::fast_skip()
+{
+    mp_next(&_current_pos);
+}
+
 void mp_reader::skip()
 {
     // TODO
@@ -155,27 +160,26 @@ mp_reader mp_reader::iproto_message()
     return mp_reader{head, _current_pos};
 }
 
-string_view mp_reader::to_string()
+string mp_reader::to_string()
 {
-    // for the sake of convenience
-    if (!*this)
-        return {};
-
-    auto type = mp_typeof(*_current_pos);
-    if (type == MP_STR)
+    string res(128, '\0');
+    // TODO ext type
+    int cnt = mp_snprint(res.data(), static_cast<int>(res.size()), _current_pos);
+    if (cnt < 0)
     {
-        uint32_t len = 0;
-        const char *value = mp_decode_str(&_current_pos, &len);
-        return {value, len};
+        throw mp_reader_error("mp_snprint error", *this);
     }
-
-    if (type == MP_NIL)
+    else
     {
-        mp_decode_nil(&_current_pos);
-        return {}; // data() == nullptr
+        if (cnt >= static_cast<int>(res.size()))
+        {
+            res.resize(static_cast<size_t>(cnt + 1));
+            cnt = mp_snprint(res.data(), static_cast<int>(res.size()), _current_pos);
+        }
+        res.resize(static_cast<size_t>(cnt));
     }
-
-    throw mp_reader_error("string expected, got " + mpuck_type_name(type), *this);
+    mp_next(&_current_pos);
+    return res;
 }
 
 void mp_reader::rewind() noexcept
@@ -185,7 +189,8 @@ void mp_reader::rewind() noexcept
 
 mp_reader &mp_reader::operator>>(string &val)
 {
-    string_view tmp = to_string();
+    string_view tmp;
+    *this >> tmp;
     if (!tmp.data())
         throw mp_reader_error("string expected, got no data", *this);
     val.assign(tmp.data(), tmp.size());
@@ -194,7 +199,29 @@ mp_reader &mp_reader::operator>>(string &val)
 
 mp_reader &mp_reader::operator>>(string_view &val)
 {
-    val = to_string();
+    // for the sake of convenience
+    if (!*this)
+    {
+        val = {};
+        return *this;
+    }
+
+    auto type = mp_typeof(*_current_pos);
+    if (type == MP_STR)
+    {
+        uint32_t len = 0;
+        const char *value = mp_decode_str(&_current_pos, &len);
+        val = {value, len};
+    }
+    else if (type == MP_NIL)
+    {
+        mp_decode_nil(&_current_pos);
+        val = {}; // data() == nullptr
+    }
+    else
+    {
+        throw mp_reader_error("string expected, got " + mpuck_type_name(type), *this);
+    }
     return *this;
 }
 
@@ -208,45 +235,6 @@ mp_reader::operator bool() const noexcept
 mp_map_reader::mp_map_reader(const char *begin, const char *end, size_t cardinality)
     : mp_reader(begin, end), _cardinality(cardinality)
 {
-}
-
-mp_reader mp_map_reader::operator[](int64_t key) const
-{
-    mp_reader res = find(key);
-    if (!res)
-        throw mp_reader_error("key not found", *this);
-    return res;
-}
-
-mp_reader mp_map_reader::find(int64_t key) const
-{
-    const char *ptr = _begin;
-    auto n = _cardinality;
-    while (n-- > 0)
-    {
-        bool found = false;
-        if (key >= 0 && mp_typeof(*ptr) == MP_UINT)
-        {
-            auto cur_key = mp_decode_uint(&ptr);
-            found = (cur_key <= std::numeric_limits<int64_t>::max() && key == static_cast<int64_t>(cur_key));
-        }
-        else if (mp_typeof(*ptr) == MP_INT) // msgpuck has assert(num < 0) within mp_encode_int()
-        {
-            auto cur_key = mp_decode_int(&ptr);
-            found = (key == cur_key);
-        }
-        else
-        {
-            mp_next(&ptr); // skip a key
-        }
-
-        auto begin = ptr;
-        mp_next(&ptr);
-
-        if (found)
-            return {begin, ptr};
-    }
-    return {nullptr, nullptr};
 }
 
 size_t mp_map_reader::cardinality() const noexcept
