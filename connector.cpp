@@ -106,4 +106,9 @@ namespace tnt
             connection::close(true, reconnect_soon);
     }
 
+    bool Connector::IsConnected()
+    {
+        return isConnected_;
+    }
+
 }

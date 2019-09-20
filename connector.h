@@ -97,6 +97,7 @@ namespace tnt
         void AddOnOpened(SimpleEventCallbak cb_);
         void AddOnClosed(SimpleEventCallbak cb_);
         void close(bool reconnect_soon = false) noexcept;
+        bool IsConnected();
 
     protected:
         class HandlerData

@@ -19,6 +19,7 @@ namespace tnt
 
         socketWatcher_.data = this;
         ev_init(&socketWatcher_, OnSocketEvent_);
+        socketWatcher_.events = 0;
 
         on_socket_watcher_request([this](int mode)noexcept{this->OnSocketWatcherRequest(mode);});
 
