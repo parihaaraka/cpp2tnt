@@ -31,7 +31,7 @@ class mp_reader
 {
 public:
     mp_reader(const wtf_buffer &buf);
-    mp_reader(const char *begin, const char *end);
+    mp_reader(const char *begin = nullptr, const char *end = nullptr);
     const char* begin() const noexcept;
     const char* end() const noexcept;
     const char* pos() const noexcept;
@@ -52,6 +52,8 @@ public:
     std::string to_string();
     /// Reset current reading position back to the beginning.
     void rewind() noexcept;
+    /// Return true if current value is nil.
+    bool is_null() const;
 
     /// true if not empty
     operator bool() const noexcept;
@@ -199,6 +201,7 @@ protected:
 class mp_map_reader : public mp_reader
 {
 public:
+    mp_map_reader() = default;
     /// Return reader for the value with a specified key.
     /// Current parsing position stays unchanged. Throws if the key is not found.
     template <typename T>
@@ -237,13 +240,14 @@ public:
 private:
     friend class mp_reader;
     mp_map_reader(const char *begin, const char *end, size_t cardinality);
-    size_t _cardinality;
+    size_t _cardinality = 0;
 };
 
 /// messagepack array reader
 class mp_array_reader : public mp_reader
 {
 public:
+    mp_array_reader() = default;
     /// Return reader for a value with specified index.
     /// Current parsing position stays unchanged. Throws if specified index out of bounds.
     mp_reader operator[](size_t ind) const;
@@ -265,7 +269,7 @@ public:
 private:
     friend class mp_reader;
     mp_array_reader(const char *begin, const char *end, size_t cardinality);
-    size_t _cardinality;
+    size_t _cardinality = 0;
 };
 
 template <typename T>

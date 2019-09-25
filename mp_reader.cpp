@@ -187,6 +187,11 @@ void mp_reader::rewind() noexcept
     _current_pos = _begin;
 }
 
+bool mp_reader::is_null() const
+{
+    return mp_typeof(*_current_pos) == MP_NIL;
+}
+
 mp_reader &mp_reader::operator>>(string &val)
 {
     string_view tmp;
