@@ -124,9 +124,9 @@ mp_map_reader mp_reader::map()
     auto head = _current_pos;
     if (mp_check(&_current_pos, _end))
         throw mp_reader_error("invalid messagepack", *this);
-    auto size = mp_decode_map(&head);
+    auto cardinality = mp_decode_map(&head);
 
-    return mp_map_reader(head, _current_pos, size);
+    return mp_map_reader(head, _current_pos, cardinality);
 }
 
 mp_array_reader mp_reader::array()
@@ -138,9 +138,9 @@ mp_array_reader mp_reader::array()
     auto head = _current_pos;
     if (mp_check(&_current_pos, _end))
         throw mp_reader_error("invalid messagepack", *this);
-    auto size = mp_decode_array(&head);
+    auto cardinality = mp_decode_array(&head);
 
-    return mp_array_reader(head, _current_pos, size);
+    return mp_array_reader(head, _current_pos, cardinality);
 }
 
 mp_reader mp_reader::iproto_message()
@@ -163,7 +163,77 @@ mp_reader mp_reader::iproto_message()
 string mp_reader::to_string()
 {
     string res(128, '\0');
-    // TODO ext type
+
+    auto type = mp_typeof(*_current_pos);
+    if (type == MP_EXT) // mp_snprint prints 'undefined'
+    {
+        int8_t ext_type;
+        uint32_t n; // data size
+        const char *val = mp_decode_ext(&_current_pos, &ext_type, &n);
+        if (ext_type != 1)
+        {
+            res = "undefined";
+            return res;
+        }
+
+        auto hex_val = hex_dump(val, val + n);
+
+        char *pos = res.data();
+        int8_t exp = *val;
+        auto tmp = static_cast<uint8_t>(val[--n]) & 0xF;
+        if (tmp == 0xB || tmp == 0xD)
+            *pos++ = '-';
+
+        int8_t digits = static_cast<int8_t>(n * 2 - 1);
+        bool skip_first = false;
+        if ((*(val + 1) & 0xF0) == 0)
+        {
+            --digits;
+            skip_first = true;
+        }
+
+        if (exp > 0 && exp >= digits)
+        {
+            *pos++ = '0';
+            if (exp > digits)
+            {
+                *pos++ = '.';
+                for (int i = 0; i < exp - digits; ++i)
+                    *pos++ = '0';
+            }
+        }
+
+        do
+        {
+            ++val;
+            uint8_t c = static_cast<uint8_t>(*val);
+            if (skip_first)
+                skip_first = false;
+            else
+            {
+                *pos++ = static_cast<char>('0' + (c >> 4));
+                --digits;
+            }
+
+            if (exp && digits == exp)
+                *pos++ = '.';
+            if (digits)
+            {
+                *pos++ = static_cast<char>('0' + (c & 0xF));
+                --digits;
+                if (exp && digits == exp)
+                    *pos++ = '.';
+            }
+        }
+        while (digits);
+
+        while (exp++ < 0)
+            *pos++ = '0';
+
+        res.resize(static_cast<size_t>(pos - res.data()));
+        return res;
+    }
+
     int cnt = mp_snprint(res.data(), static_cast<int>(res.size()), _current_pos);
     if (cnt < 0)
     {

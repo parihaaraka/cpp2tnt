@@ -108,19 +108,19 @@ ev4cpp2tnt::~ev4cpp2tnt()
 void ev4cpp2tnt::take_care(tnt::connection *cn)
 {
     register_connection(cn);
-    cn->on_destruct(bind(::unregister_connection, _ev_data.get(), placeholders::_1));
+    cn->on_destruct(bind(::unregister_connection, _ev_data.get(), cn));
 }
 
 void ev4cpp2tnt::enable_globally()
 {
-    tnt::connection::on_construct_all(bind(::register_connection, _ev_data.get(), placeholders::_1));
-    tnt::connection::on_destruct_all(bind(::unregister_connection, _ev_data.get(), placeholders::_1));
+    tnt::connection::on_construct_global(bind(::register_connection, _ev_data.get(), placeholders::_1));
+    tnt::connection::on_destruct_global(bind(::unregister_connection, _ev_data.get(), placeholders::_1));
 }
 
 void ev4cpp2tnt::disable_globally()
 {
-    tnt::connection::on_construct_all(nullptr);
-    tnt::connection::on_destruct_all(nullptr);
+    tnt::connection::on_construct_global(nullptr);
+    tnt::connection::on_destruct_global(nullptr);
 }
 
 void ev4cpp2tnt::register_connection(tnt::connection *cn)

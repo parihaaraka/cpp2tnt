@@ -14,8 +14,8 @@
 
 #define GENERAL_TIMEOUT 10
 
-fu2::unique_function<void(tnt::connection*)> tnt::connection::_on_construct_all_cb;
-fu2::unique_function<void(tnt::connection*)> tnt::connection::_on_destruct_all_cb;
+std::function<void(tnt::connection*)> tnt::connection::_on_construct_global_cb;
+std::function<void(tnt::connection*)> tnt::connection::_on_destruct_global_cb;
 
 static std::string errno2str()
 {
@@ -42,8 +42,8 @@ connection::connection(std::string_view connection_string)
         _detected_response_size = 0;
     };
 
-    if (_on_construct_all_cb)
-        _on_construct_all_cb(this);
+    if (_on_construct_global_cb)
+        _on_construct_global_cb(this);
 }
 
 void connection::handle_error(string_view message, error internal_error, uint32_t db_error) noexcept
@@ -197,9 +197,9 @@ connection::~connection()
     try
     {
         if (_on_destruct_cb)
-            _on_destruct_cb(this);
-        else if (_on_destruct_all_cb)
-            _on_destruct_all_cb(this);
+            _on_destruct_cb();
+        else if (_on_destruct_global_cb)
+            _on_destruct_global_cb(this);
     }
     catch (const exception &e)
     {
@@ -755,19 +755,19 @@ connection& connection::on_notify_request(decltype(_on_notify_request) &&handler
     return *this;
 }
 
-void connection::on_destruct_all(decltype(_on_destruct_all_cb) handler)
+void connection::on_construct_global(const std::function<void(connection*)> &handler)
 {
-    _on_destruct_all_cb = move(handler);
+    _on_construct_global_cb = handler;
 }
 
-void connection::on_destruct(decltype(_on_destruct_cb) handler)
+void connection::on_destruct_global(const std::function<void(connection*)> &handler)
+{
+    _on_destruct_global_cb = handler;
+}
+
+void connection::on_destruct(fu2::unique_function<void()> &&handler)
 {
     _on_destruct_cb = move(handler);
-}
-
-void connection::on_construct_all(decltype(_on_construct_all_cb) handler)
-{
-    _on_construct_all_cb = move(handler);
 }
 
 } // namespace tnt
