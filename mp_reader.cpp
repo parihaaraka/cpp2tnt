@@ -168,67 +168,70 @@ string mp_reader::to_string()
     if (type == MP_EXT) // mp_snprint prints 'undefined'
     {
         int8_t ext_type;
-        uint32_t n; // data size
-        const char *val = mp_decode_ext(&_current_pos, &ext_type, &n);
+        uint32_t val_bytes; // data size
+        const char *val = mp_decode_ext(&_current_pos, &ext_type, &val_bytes);
+        //auto hex_val = hex_dump(val, val + val_bytes);
         if (ext_type != 1)
         {
             res = "undefined";
             return res;
         }
 
-        auto hex_val = hex_dump(val, val + n);
-
         char *pos = res.data();
-        int8_t exp = *val;
-        auto tmp = static_cast<uint8_t>(val[--n]) & 0xF;
-        if (tmp == 0xB || tmp == 0xD)
+        auto sign_nibble = static_cast<uint8_t>(val[--val_bytes]) & 0xF;
+        if (sign_nibble == 0xB || sign_nibble == 0xD)
             *pos++ = '-';
+        char *first_dec_digit = pos;
+        *first_dec_digit = 'N';  // no output flag
 
-        int8_t digits = static_cast<int8_t>(n * 2 - 1);
-        bool skip_first = false;
-        if ((*(val + 1) & 0xF0) == 0)
-        {
-            --digits;
-            skip_first = true;
-        }
+        int8_t nibbles_left = static_cast<int8_t>(val_bytes * 2 - 1);
+        if (!((*(val + 1)) & 0xF0)) // first nibble is 0
+            --nibbles_left;
 
-        if (exp > 0 && exp >= digits)
+        int8_t exp = *val;
+        // TODO adjust destination buffer size
+        if (exp > 0 && exp >= nibbles_left)
         {
             *pos++ = '0';
-            if (exp > digits)
-            {
-                *pos++ = '.';
-                for (int i = 0; i < exp - digits; ++i)
-                    *pos++ = '0';
-            }
+            *pos++ = '.';
+            for (int i = 0; i < exp - nibbles_left; ++i)
+                *pos++ = '0';
         }
 
+        uint8_t nz_flag = 0;
         do
         {
-            ++val;
-            uint8_t c = static_cast<uint8_t>(*val);
-            if (skip_first)
-                skip_first = false;
-            else
+            uint8_t c = static_cast<uint8_t>(*(++val));
+            if (nibbles_left & 0x1)
             {
-                *pos++ = static_cast<char>('0' + (c >> 4));
-                --digits;
+                *pos = static_cast<char>('0' + (c >> 4));
+                nz_flag |= *pos++;
+                --nibbles_left;
+                if (exp && nibbles_left == exp)
+                    *pos++ = '.';
             }
 
-            if (exp && digits == exp)
-                *pos++ = '.';
-            if (digits)
+            if (nibbles_left)
             {
-                *pos++ = static_cast<char>('0' + (c & 0xF));
-                --digits;
-                if (exp && digits == exp)
+                *pos = static_cast<char>('0' + (c & 0xF));
+                nz_flag |= *pos++;
+                --nibbles_left;
+                if (exp && nibbles_left == exp)
                     *pos++ = '.';
             }
         }
-        while (digits);
+        while (nibbles_left);
 
-        while (exp++ < 0)
-            *pos++ = '0';
+        if (nz_flag) // non-zero digit exists
+        {
+            while (exp++ < 0)
+                *pos++ = '0';
+        }
+        else if (*first_dec_digit == 'N') // no digits at all
+        {
+            *first_dec_digit = '0';
+            pos = first_dec_digit + 1;
+        }
 
         res.resize(static_cast<size_t>(pos - res.data()));
         return res;
