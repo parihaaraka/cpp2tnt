@@ -80,6 +80,9 @@ public:
     template <typename T, typename = std::enable_if_t<std::is_integral_v<T> && sizeof(T) < 16>>
     mp_reader& operator>> (T &val)
     {
+        if (_current_pos >= _end)
+            throw mp_reader_error("read out of bounds", *this);
+
         auto type = mp_typeof(*_current_pos);
         if constexpr (std::is_same_v<T, bool>)
         {
@@ -141,6 +144,9 @@ public:
     template <typename T>
     bool equals(const T &val) const
     {
+        if (_current_pos >= _end)
+            throw mp_reader_error("read out of bounds", *this);
+
         auto begin = _current_pos;
         auto end = begin;
         mp_next(&end);
@@ -254,7 +260,6 @@ public:
     /// The array's cardinality.
     size_t cardinality() const noexcept;
 
-    using mp_reader::operator>>;
     template <typename T>
     mp_array_reader& operator>> (std::optional<T> &val)
     {
@@ -263,6 +268,18 @@ public:
             val = std::nullopt;
         else
             mp_reader::operator>>(val);
+        return *this;
+    }
+
+    //  Do not do it this way!
+    //  It breaks out of bounds reading logic (successful for optionals) by switching to mp_reader.
+    //  We need to preserve mp_array_reader type after every reading operation.
+    //using mp_reader::operator>>;
+
+    template <typename T>
+    mp_array_reader& operator>> (T &val)
+    {
+        mp_reader::operator>>(val);
         return *this;
     }
 

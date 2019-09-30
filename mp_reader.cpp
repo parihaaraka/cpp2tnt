@@ -278,7 +278,7 @@ mp_reader &mp_reader::operator>>(string &val)
 mp_reader &mp_reader::operator>>(string_view &val)
 {
     // for the sake of convenience
-    if (!*this)
+    if (!*this || _current_pos >= _end)
     {
         val = {};
         return *this;
