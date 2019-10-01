@@ -318,7 +318,7 @@ mp_reader& mp_reader::operator>> (std::tuple<Args...> &val)
 {
     mp_array_reader arr = array();
     std::apply(
-        [arr](const auto&... item)
+        [&arr](auto&... item)
         {
             ((arr >> item), ...);
         },
@@ -332,7 +332,7 @@ mp_reader& mp_reader::operator>> (std::tuple<Args&...> val)
 {
     mp_array_reader arr = array();
     std::apply(
-        [arr](const auto&... item)
+        [&arr](auto&... item)
         {
             ((arr >> item), ...);
         },
