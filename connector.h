@@ -59,7 +59,7 @@ namespace tnt
                 begin_call(name);
                 begin_array(countArgs);
                 write(args...);
-                if (countArgs)
+				//if (countArgs)
                     finalize();
                 finalize();
                 HandlerData handler;
