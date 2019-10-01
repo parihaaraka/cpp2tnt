@@ -43,8 +43,7 @@ void mp_writer::begin_array(uint32_t max_cardinality)
     if (!_opened_containers.empty())
         ++_opened_containers.top().items_count;
 
-    if (max_cardinality)
-        _opened_containers.push({_buf.size(), max_cardinality});
+    _opened_containers.push({_buf.size(), max_cardinality});
     _buf.end = mp_encode_array(_buf.end, max_cardinality);
 }
 
@@ -53,8 +52,7 @@ void mp_writer::begin_map(uint32_t max_cardinality)
     if (!_opened_containers.empty())
         ++_opened_containers.top().items_count;
 
-    if (max_cardinality)
-        _opened_containers.push({_buf.size(), max_cardinality});
+    _opened_containers.push({_buf.size(), max_cardinality});
     _buf.end = mp_encode_map(_buf.end, max_cardinality);
 }
 
@@ -161,8 +159,7 @@ iproto_writer::iproto_writer(tnt::connection &cn, wtf_buffer &buf) : mp_writer(b
 
 void iproto_writer::encode_header(tnt::request_type req_type)
 {
-    // close previous request and its opened containers
-    while (!_opened_containers.empty()) finalize();
+    finalize_all();
 
     // ensure we have 1kb free (make prereserve manually if you need some more)
     if (_buf.capacity() - _buf.size() < 1024)

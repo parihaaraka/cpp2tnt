@@ -14,6 +14,9 @@
 
 #define GENERAL_TIMEOUT 10
 
+std::function<void(tnt::connection*)> tnt::connection::_on_construct_global_cb;
+std::function<void(tnt::connection*)> tnt::connection::_on_destruct_global_cb;
+
 static std::string errno2str()
 {
     char buf[128];
@@ -21,7 +24,7 @@ static std::string errno2str()
     strerror_r(errno, buf, sizeof(buf));
     return buf;
 #else
-    return strerror_r(errno, buf, sizeof(buf));;
+    return strerror_r(errno, buf, sizeof(buf));
 #endif
 }
 
@@ -38,6 +41,9 @@ connection::connection(std::string_view connection_string)
         _last_received_head_offset = 0;
         _detected_response_size = 0;
     };
+
+    if (_on_construct_global_cb)
+        _on_construct_global_cb(this);
 }
 
 void connection::handle_error(string_view message, error internal_error, uint32_t db_error) noexcept
@@ -176,11 +182,30 @@ void connection::pass_response_to_caller()
     }
 }
 
+void connection::watch_socket(socket_state mode) noexcept
+{
+    _prev_watch_mode = mode;
+    _socket_watcher_request_cb(mode);
+}
+
 connection::~connection()
 {
     close();
     if (_address_resolver.joinable())
         _address_resolver.join();
+
+    try
+    {
+        if (_on_destruct_cb)
+            _on_destruct_cb();
+        else if (_on_destruct_global_cb)
+            _on_destruct_global_cb(this);
+    }
+    catch (const exception &e)
+    {
+        handle_error(e.what(), error::external);
+    }
+    catch (...) {}
 }
 
 void connection::address_resolved(const addrinfo *addr_info)
@@ -218,14 +243,14 @@ void connection::address_resolved(const addrinfo *addr_info)
         if (connect(s.handle(), addr->ai_addr, addr->ai_addrlen) != -1)
         {
             _socket = move(s);
-            _socket_watcher_request_cb(socket_state::read); //wait for greeting
+            watch_socket(socket_state::read); //wait for greeting
             return;
         }
 
         if (errno == EINPROGRESS)
         {
             _socket = move(s);
-            _socket_watcher_request_cb(socket_state::write);
+            watch_socket(socket_state::write);
             _idle_seconds_counter = 0;
             return;
         }
@@ -239,7 +264,7 @@ void connection::address_resolved(const addrinfo *addr_info)
     _idle_seconds_counter = 0; // reconnect soon
 }
 
-void connection::open()
+void connection::open(int delay)
 {
     if (_state == state::connected)
         return;
@@ -247,6 +272,12 @@ void connection::open()
     if (_state != state::disconnected)
     {
         handle_error("unable to connect, connection is busy", error::bad_call_sequence);
+        return;
+    }
+
+    if (delay > 0)
+    {
+        _idle_seconds_counter = delay;
         return;
     }
 
@@ -329,14 +360,14 @@ void connection::open()
         if (connect(s.handle(), reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) != -1)
         {
             _socket = move(s);
-            _socket_watcher_request_cb(socket_state::read); //wait for greeting
+            watch_socket(socket_state::read); //wait for greeting
             return;
         }
 
         if (errno == EAGAIN)
         {
             _socket = move(s);
-            _socket_watcher_request_cb(socket_state::write);
+            watch_socket(socket_state::write);
             _idle_seconds_counter = 0;
             return;
         }
@@ -362,7 +393,7 @@ void connection::close(bool call_disconnect_handler, bool reconnect_soon) noexce
     if (!_socket)
         return;
 
-    _socket_watcher_request_cb(socket_state::none);
+    watch_socket(socket_state::none);
     _socket.close();
 
     // Clear all sending buffers. A caller must resume its work
@@ -502,6 +533,18 @@ void connection::tick_1sec() noexcept
             _idle_seconds_counter = 0; // reconnect soon
         }
     }
+
+    // TMP
+    else if (is_opened() && _uncorked_size && std::time(nullptr) - _last_write_time > 10)
+    {
+        size_t bytes_to_send = static_cast<size_t>(_send_buffer.end - _next_to_send);
+        handle_error("~~~~~ uncorked data is stuck! ~~~~~"
+                     "\ncurrent socket watch mode: " +
+                     std::to_string(_prev_watch_mode) +
+                     "\nbytes_to_send: " + std::to_string(bytes_to_send) +
+                     "\nuncorked_size: " + std::to_string(_uncorked_size));
+        flush();
+    }
 }
 
 void connection::acquire_notifications()
@@ -639,12 +682,23 @@ void connection::write() noexcept
             _idle_seconds_counter = 0; // reconnect soon
             return;
         }
-        _socket_watcher_request_cb(socket_state::read);
+        watch_socket(socket_state::read);
         return;
     }
 
     assert(_send_buffer.end >= _next_to_send);
     size_t bytes_to_send = static_cast<size_t>(_send_buffer.end - _next_to_send);
+
+    // TMP
+    if (bytes_to_send <= 0 && _uncorked_size)
+    {
+        handle_error("~~~~~ wtf inside write() ?! ~~~~~"
+                     "\ncurrent socket watch mode: " +
+                     std::to_string(_prev_watch_mode) +
+                     "\nbytes_to_send: " + std::to_string(bytes_to_send) +
+                     "\nuncorked_size: " + std::to_string(_uncorked_size));
+    }
+
     while (bytes_to_send > 0)
     {
         ssize_t r = send(_socket.handle(),
@@ -662,11 +716,12 @@ void connection::write() noexcept
             _idle_seconds_counter = 0; // reconnect soon
             return;
         }
+        _last_write_time = std::time(nullptr);
         bytes_to_send -= static_cast<size_t>(r);
-        if (bytes_to_send)
-            _next_to_send += r;
-        // sending buffer is empty, so acquire uncorked data from output buffer
-        else if (_uncorked_size)
+        _next_to_send += r;
+
+        // _send_buffer is done, _output_buffer has data to send
+        if (!bytes_to_send && _uncorked_size)
         {
             _send_buffer.clear();
             _send_buffer.swap(_output_buffer);
@@ -681,15 +736,11 @@ void connection::write() noexcept
                 _send_buffer.resize(bytes_to_send);
             }
         }
-        else
-        {
-            _next_to_send += r;
-        }
     }
 
-    _socket_watcher_request_cb(bytes_to_send ?
-                                   socket_state::read_write :
-                                   socket_state::read);
+    watch_socket(bytes_to_send ?
+                     socket_state::read_write :
+                     socket_state::read);
 }
 
 connection &connection::on_response(decltype(_response_cb) &&handler)
@@ -702,6 +753,21 @@ connection& connection::on_notify_request(decltype(_on_notify_request) &&handler
 {
     _on_notify_request = move(handler);
     return *this;
+}
+
+void connection::on_construct_global(const std::function<void(connection*)> &handler)
+{
+    _on_construct_global_cb = handler;
+}
+
+void connection::on_destruct_global(const std::function<void(connection*)> &handler)
+{
+    _on_destruct_global_cb = handler;
+}
+
+void connection::on_destruct(fu2::unique_function<void()> &&handler)
+{
+    _on_destruct_cb = move(handler);
 }
 
 } // namespace tnt

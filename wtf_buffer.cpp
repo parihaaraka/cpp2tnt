@@ -58,3 +58,17 @@ void wtf_buffer::swap(wtf_buffer &other) noexcept
     // DO NOT swap on_clear!
 }
 
+wtf_buffer::wtf_buffer(wtf_buffer &&src)
+{
+    // end stays valid
+    _buf.swap(src._buf);
+}
+
+wtf_buffer &wtf_buffer::operator=(wtf_buffer &&src)
+{
+    // end stays valid
+    if (this != &src)
+        _buf.swap(src._buf);
+    return *this;
+}
+

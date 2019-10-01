@@ -23,10 +23,10 @@ public:
     /// Wrap writer object around specified buffer.
     mp_writer(wtf_buffer &buf);
     /// Put array header with <max_size> cardinality and move current position over it.
-    /// If max_cardinality > 0 then call finalize() to replace initial cardinality with actual value.
+    /// A caller must call finalize() to close the array and actualize its initial size.
     void begin_array(uint32_t max_cardinality);
     /// Put map header with <max_size> cardinality and move current position over it.
-    /// If max_cardinality > 0 then call finalize() to replace initial cardinality with actual value.
+    /// A caller must call finalize() to close the map and actualize its initial size.
     void begin_map(uint32_t max_cardinality);
     /// Replace initial cardinality settled with begin_array(), begin_map() with actual
     /// value (counted untill now). NB Do not finalize containers with zero initial size!
@@ -140,8 +140,7 @@ public:
             },
             val
         );
-        if (std::tuple_size_v<std::tuple<Args...>>)
-            finalize();
+        finalize();
         return *this;
     }
 
@@ -151,8 +150,7 @@ public:
         begin_array(val.size());
         for (const auto& elem: val)
             *this << elem;
-        if (val.size())
-            finalize();
+        finalize();
         return *this;
     }
 
@@ -165,8 +163,7 @@ public:
             *this << elem.first;
             *this << elem.second;
         }
-        if (val.size())
-            finalize();
+        finalize();
         return *this;
     }
 
@@ -237,14 +234,24 @@ public:
     /// Put ping request into the underlying buffer.
     void encode_ping_request();
 
-    /// Initiate call request. A caller must fill arguments afterwards and call finalize()
-    /// to finalize request.
+    /// Initiate call request. A caller must pass an array of arguments afterwards
+    /// and call finalize() to finalize request.
     void begin_call(std::string_view fn_name);
+
+    /// Call request all-in-one wrapper.
+    template <typename ...Ts>
+    void call(std::string_view fn_name, Ts const&... args)
+    {
+        begin_call(fn_name);
+        begin_array(sizeof...(args));
+        ((*this << args), ...);
+        finalize_all();
+    }
 
     /// Replace initial request size settled with begin_call() or encode_header()
     /// with actual value (counted untill now).
     void finalize();
-    /// Finalize all non-finalized containers and/or call.
+    /// Finalize all non-finalized containers and call (if exists).
     void finalize_all();
 
     using mp_writer::operator<<;

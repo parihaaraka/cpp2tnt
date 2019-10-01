@@ -61,6 +61,7 @@ private:
     size_t _detected_response_size = 0; ///< current response size (to detect it's being fetched en bloc)
     void process_receive_buffer();
     void pass_response_to_caller();
+    void watch_socket(socket_state mode) noexcept;
 
     wtf_buffer _output_buffer;          ///< actually corked buffer
     wtf_buffer _send_buffer;            ///< sending data
@@ -70,6 +71,10 @@ private:
     uint64_t _request_id = 0;           ///< sync_id in terms of tnt
     bool _is_corked = false;
     size_t _uncorked_size = 0;          ///< size of data within output buffer
+
+    // TMP
+    time_t _last_write_time = 0;
+    socket_state _prev_watch_mode = socket_state::none;
 
     enum class state {
         disconnected,
@@ -101,12 +106,15 @@ protected:
     void handle_error(std::string_view message = {},
                       error internal_error = error::system,
                       uint32_t db_error = 0) noexcept;
+    static std::function<void(connection*)> _on_construct_global_cb;
+    static std::function<void(connection*)> _on_destruct_global_cb;
+    fu2::unique_function<void()> _on_destruct_cb;
 
 public:
     connection(std::string_view connection_string = {});
     ~connection();
 
-    void open();
+    void open(int delay = 0);
     void close(bool call_disconnect_handler = true, bool reconnect_soon = false) noexcept;
     void set_connection_string(std::string_view connection_string);
     /** Thread-safe method to initiate a handler call in the connector's thread */
@@ -182,6 +190,12 @@ public:
      */
     connection& on_notify_request(decltype(_on_notify_request) &&handler);
 
+    /** Callback to be called on connection instantiation. Used in ev4cpp2tnt. */
+    static void on_construct_global(const std::function<void(connection*)> &handler);
+    /** Callback to be called on connection destruction. Used in ev4cpp2tnt. */
+    static void on_destruct_global(const std::function<void(connection*)> &handler);
+    /** Single instance-wide callback to be called on connection destruction. */
+    void on_destruct(fu2::unique_function<void()> &&handler);
 };
 
 } // namespace tnt
