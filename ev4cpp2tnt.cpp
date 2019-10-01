@@ -72,7 +72,7 @@ void register_connection(ev4cpp2tnt::ev_data *data, tnt::connection *cn)
 void unregister_connection(ev4cpp2tnt::ev_data *data, tnt::connection *cn)
 {
     auto node = data->per_connection_watchers.extract(cn);
-    if (!node.empty())
+    if (node.empty())
         return;
     cn->on_socket_watcher_request({});
     auto &evb = *node.mapped();
@@ -101,8 +101,7 @@ ev4cpp2tnt::~ev4cpp2tnt()
 {
     while (!_ev_data->per_connection_watchers.empty())
         unregister_connection(_ev_data->per_connection_watchers.begin()->first);
-    if (ev_is_active(&_ev_data->timer))
-        ev_timer_stop(_ev_data->loop, &_ev_data->timer);
+    ev_timer_stop(_ev_data->loop, &_ev_data->timer);
 }
 
 void ev4cpp2tnt::take_care(tnt::connection *cn)

@@ -19,12 +19,12 @@ static void signal_cb(struct ev_loop *loop, ev_signal *w, int)
 
 int main(int argc, char *argv[])
 {
+    struct ev_loop *loop = EV_DEFAULT;
+    ev4cpp2tnt ev_wrapper(loop);
+
     tnt::connection cn;
     cn.set_connection_string(argc > 1 ? argv[1] : "localhost:3301");
     // "unix/:/var/run/tarantool/tarantool.sock"
-
-    struct ev_loop *loop = EV_DEFAULT;
-    ev4cpp2tnt ev_wrapper(loop);
     ev_wrapper.take_care(&cn);
 
     ev_signal term_signal_watcher;
