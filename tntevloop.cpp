@@ -8,12 +8,18 @@ using namespace std;
 namespace tnt
 {
 
-    TntEvLoop::TntEvLoop()
-    {
-        AddOnOpened(bind(&TntEvLoop::OnConnected, this));
-    }
+	TntEvLoop::TntEvLoop()
+	{
+		AddOnOpened(bind(&TntEvLoop::OnConnected, this));
+	}
 
-    void TntEvLoop::Attach(struct ev_loop* loop)
+	TntEvLoop::~TntEvLoop()
+	{
+		isStoped_ = true;
+		connection::close(false, false);
+	}
+
+	void TntEvLoop::Attach(struct ev_loop* loop)
     {
         loop_ = loop;
 
@@ -37,6 +43,8 @@ namespace tnt
 
     void TntEvLoop::OnSocketWatcherRequest(int mode) noexcept
     {
+		if (isStoped_)
+			return;
         int events = (mode & tnt::socket_state::read  ? EV_READ  : EV_NONE);
         events    |= (mode & tnt::socket_state::write ? EV_WRITE : EV_NONE);
 
@@ -58,7 +66,9 @@ namespace tnt
 
     void TntEvLoop::OnSocketEvent(struct ev_loop* loop, ev_io* w, int revents)
     {
-        (void)loop;(void)w;
+//		if (isStoped_)
+//			return;
+		(void)loop;(void)w;
         if (revents & EV_ERROR)
             connection::handle_error("EV_ERROR soket state received");
 

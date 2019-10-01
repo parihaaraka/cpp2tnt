@@ -112,7 +112,7 @@ protected:
 
 public:
     connection(std::string_view connection_string = {});
-    ~connection();
+	virtual ~connection();
 
     void open(int delay = 0);
     void close(bool call_disconnect_handler = true, bool reconnect_soon = false) noexcept;
