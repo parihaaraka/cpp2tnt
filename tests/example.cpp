@@ -46,7 +46,7 @@ int main(int argc, char *argv[])
 
     map<uint64_t, fu2::unique_function<void(const mp_map_reader&, const mp_map_reader&)>> handlers;
 
-    cn.on_opened([&cn, &handlers]()
+    cn.on_opened([&cn, &handlers, loop]()
     {
         auto throw_if_error = [](const mp_map_reader &header, const mp_map_reader &body)
         {
@@ -61,16 +61,30 @@ int main(int argc, char *argv[])
 
         cout << "connected" << endl;
         iproto_writer w(cn);
-        w.begin_call("box.info.memory");
-        w.begin_array(0); // no need to finalize zero-length array
-        w.finalize();     // finalize call
-        handlers[cn.last_request_id()] = [&throw_if_error](const mp_map_reader &header, const mp_map_reader &body)
+        w.eval("return 1,2,{3,4},{a=5,b=6},7");
+        handlers[cn.last_request_id()] = [&throw_if_error, loop](const mp_map_reader &header, const mp_map_reader &body)
         {
             throw_if_error(header, body);
             // response is an array of returned values with 32 bit length
             auto ret_data = body[tnt::response_field::DATA];
-            cout << "box.info.memory() response content:" << endl
+            cout << "response content:" << endl
                  << hex_dump(ret_data.begin(), ret_data.end()) << endl;
+            auto ret_items = ret_data.array();
+            long a, b, e;
+            map<string, int> d;
+            tuple<long, long, optional<long>> c;
+            optional<long> f, g;
+            //ret_items.values(a, b, c, d, e, f, g);
+            ret_items >> a >> b >> c >> d >> e >> f >> g;
+            cout << a << endl
+                 << b << endl
+                 << get<0>(c) << ',' << get<1>(c) << ',' << get<2>(c).value_or(0) << endl;
+            for (auto &[k,v]: d)
+                cout << k << ": " << v << endl;
+            cout << e << endl
+                 << f.value_or(0) << endl
+                 << g.value_or(0) << endl;
+            ev_break(loop);
         };
         w.encode_ping_request();
         handlers[cn.last_request_id()] = [&throw_if_error](const mp_map_reader &header, const mp_map_reader &body)

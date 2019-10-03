@@ -177,11 +177,23 @@ public:
     /// and call finalize() to finalize request.
     void begin_call(std::string_view fn_name);
 
+    void begin_eval(std::string_view script);
+
     /// Call request all-in-one wrapper.
     template <typename ...Ts>
     void call(std::string_view fn_name, Ts const&... args)
     {
         begin_call(fn_name);
+        begin_array(sizeof...(args));
+        ((*this << args), ...);
+        finalize_all();
+    }
+
+    /// Call request all-in-one wrapper.
+    template <typename ...Ts>
+    void eval(std::string_view script, Ts const&... args)
+    {
+        begin_eval(script);
         begin_array(sizeof...(args));
         ((*this << args), ...);
         finalize_all();
