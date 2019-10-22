@@ -265,6 +265,11 @@ bool mp_reader::is_null() const
     return mp_typeof(*_current_pos) == MP_NIL;
 }
 
+bool mp_reader::has_next() const noexcept
+{
+    return _current_pos && _end && _current_pos < _end;
+}
+
 mp_reader &mp_reader::operator>>(string &val)
 {
     string_view tmp;

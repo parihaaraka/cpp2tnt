@@ -57,6 +57,8 @@ public:
     void rewind() noexcept;
     /// Return true if current value is nil.
     bool is_null() const;
+    /// true if msgpack has more values to read
+    bool has_next() const noexcept;
 
     /// true if not empty
     operator bool() const noexcept;
