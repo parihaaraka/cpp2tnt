@@ -28,7 +28,7 @@ public:
     /// A caller must call finalize() to close the map and actualize its initial size.
     void begin_map(uint32_t max_cardinality);
     /// Replace initial cardinality settled with begin_array(), begin_map() with actual
-    /// value (counted untill now). NB Do not finalize containers with zero initial size!
+    /// value (counted untill now).
     void finalize();
 
     mp_writer& operator<< (const std::string_view &val);

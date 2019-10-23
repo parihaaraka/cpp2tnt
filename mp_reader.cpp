@@ -237,6 +237,51 @@ string mp_reader::to_string()
         return res;
     }
 
+    // Сериализация map в json. Именно здесь (в отличие от msgpack в целом) ключи
+    // обязаны быть строками.
+    // * пока msgpuck не умеет decimal, map придется сериализовать в строку руками
+    if (type == MP_MAP)
+    {
+        auto m = map();
+        auto size = static_cast<size_t>(m.end() - m.begin()) * 2; // хватит же? :)
+        if (res.size() < size)
+            res.resize( size);
+
+        char *pos = res.data();
+        *pos++ = '{';
+        for (size_t i = 0; i < m.cardinality(); i++)
+        {
+            if (i)
+                *pos++ = ',';
+
+            *pos++ = '"';
+            auto tmp = m.value<string_view>();
+            memcpy(pos, tmp.data(), tmp.size());
+            pos += tmp.size();
+            *pos++ = '"';
+
+            *pos++ = ':';
+
+            if (mp_typeof(*m.pos()) == MP_STR)
+            {
+                *pos++ = '"';
+                tmp = m.value<string_view>();
+                memcpy(pos, tmp.data(), tmp.size());
+                pos += tmp.size();
+                *pos++ = '"';
+            }
+            else
+            {
+                string tmp = m.to_string();
+                memcpy(pos, tmp.data(), tmp.size());
+                pos += tmp.size();
+            }
+        }
+        *pos++ = '}';
+        res.resize(static_cast<size_t>(pos - res.data()));
+        return res;
+    }
+
     int cnt = mp_snprint(res.data(), static_cast<int>(res.size()), _current_pos);
     if (cnt < 0)
     {
