@@ -143,6 +143,42 @@ mp_array_reader mp_reader::array()
     return mp_array_reader(head, _current_pos, cardinality);
 }
 
+mp_reader& mp_reader::operator>> (mp_map_reader &val) {
+    auto type = mp_typeof(*_current_pos);
+    if (type != MP_MAP)
+        throw mp_reader_error("map expected, got " + mpuck_type_name(type), *this);
+
+    auto head = _current_pos;
+    if (mp_check(&_current_pos, _end))
+        throw mp_reader_error("invalid messagepack", *this);
+    auto cardinality = mp_decode_map(&head);
+
+    val._begin = head;
+    val._end = _current_pos;
+    val._current_pos = head;
+    val._cardinality = cardinality;
+
+    return *this;
+}
+
+mp_reader& mp_reader::operator>> (mp_array_reader &val) {
+    auto type = mp_typeof(*_current_pos);
+    if (type != MP_ARRAY)
+        throw mp_reader_error("array expected, got " + mpuck_type_name(type), *this);
+
+    auto head = _current_pos;
+    if (mp_check(&_current_pos, _end))
+        throw mp_reader_error("invalid messagepack", *this);
+    auto cardinality = mp_decode_array(&head);
+
+    val._begin = head;
+    val._end = _current_pos;
+    val._current_pos = head;
+    val._cardinality = cardinality;
+
+    return *this;
+}
+
 mp_reader mp_reader::iproto_message()
 {
     if (_end - _current_pos < 5)
