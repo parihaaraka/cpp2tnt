@@ -45,9 +45,9 @@ public:
     /// Skip current encoded item, verify its type and check content.
     void skip(mp_type type, bool nullable = false);
     /// Return current encoded map within separate reader and move current position to next item.
-    mp_map_reader map();
+    [[deprecated("consider using read<mp_map_reader> instead")]] mp_map_reader map();
     /// Return current encoded array within separate reader and move current position to next item.
-    mp_array_reader array();
+    [[deprecated("consider using read<mp_array_reader> instead")]] mp_array_reader array();
     /// Return current encoded iproto message (header + body) within separate reader
     /// and move current position to next item.
     mp_reader iproto_message();
@@ -138,12 +138,24 @@ public:
     template <typename... Args>
     mp_reader& operator>> (std::tuple<Args&...> val);
 
+    mp_reader& operator>> (mp_reader &val)  = delete;
+
+    mp_reader& operator>> (mp_map_reader &val);
+
+    mp_reader& operator>> (mp_array_reader &val);
+
     template <typename T>
-    T value()
+    T read()
     {
         T res;
         *this >> res;
         return res;
+    }
+
+    template <typename T>
+    [[deprecated("consider using read instead")]] T value()
+    {
+        return read<T>();
     }
 
     template <typename... Args>
@@ -166,7 +178,7 @@ public:
 
         auto type = mp_typeof(*_current_pos);
         if constexpr (std::is_same_v<T, bool>)
-            return type == MP_BOOL && val == tmp.value<T>();
+            return type == MP_BOOL && val == tmp.read<T>();
 
         else if constexpr (std::is_enum_v<T> || (std::is_integral_v<T> && sizeof(T) < 16))
         {
@@ -189,19 +201,19 @@ public:
             if (val.data() == nullptr)
                 return type == MP_NIL;
             else if (type == MP_STR)
-                return val == tmp.value<std::string_view>();
+                return val == tmp.read<std::string_view>();
         }
         else if constexpr (std::is_same_v<T, std::string>)
         {
             if (type == MP_STR)
-                return val == tmp.value<std::string_view>();
+                return val == tmp.read<std::string_view>();
         }
         else if constexpr (std::is_same_v<typename std::decay_t<T>, char *>)
         {
             if (val == nullptr)
                 return type == MP_NIL;
             else if (type == MP_STR)
-                return val == tmp.value<std::string_view>();
+                return val == tmp.read<std::string_view>();
         }
         else
         {
@@ -324,7 +336,7 @@ private:
 template <typename T>
 mp_reader& mp_reader::operator>> (std::vector<T> &val)
 {
-    mp_array_reader arr = array();
+    mp_array_reader arr = read<mp_array_reader>();
     val.resize(arr.cardinality());
     for (size_t i = 0; i < val.size(); ++i)
         arr >> val[i];
@@ -334,7 +346,7 @@ mp_reader& mp_reader::operator>> (std::vector<T> &val)
 template <typename KeyT, typename ValueT>
 mp_reader& mp_reader::operator>> (std::map<KeyT, ValueT> &val)
 {
-    mp_map_reader mp_map = map();
+    mp_map_reader mp_map = read<mp_map_reader>();
     for (size_t i = 0; i < mp_map.cardinality(); ++i)
     {
         KeyT k;
@@ -348,7 +360,7 @@ mp_reader& mp_reader::operator>> (std::map<KeyT, ValueT> &val)
 template <typename... Args>
 mp_reader& mp_reader::operator>> (std::tuple<Args...> &val)
 {
-    mp_array_reader arr = array();
+    mp_array_reader arr = read<mp_array_reader>();
     std::apply(
         [&arr](auto&... item)
         {
@@ -362,7 +374,7 @@ mp_reader& mp_reader::operator>> (std::tuple<Args...> &val)
 template <typename... Args>
 mp_reader& mp_reader::operator>> (std::tuple<Args&...> val)
 {
-    mp_array_reader arr = array();
+    mp_array_reader arr = read<mp_array_reader>();
     std::apply(
         [&arr](auto&... item)
         {
