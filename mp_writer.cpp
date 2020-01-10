@@ -225,6 +225,17 @@ void iproto_writer::begin_call(string_view fn_name)
     // a caller must append an array of arguments (zero-length one if void)
 }
 
+void iproto_writer::begin_eval(string_view script)
+{
+    encode_header(tnt::request_type::EVAL);
+
+    _buf.end = mp_encode_map(_buf.end, 2);
+    _buf.end = mp_encode_uint(_buf.end, tnt::body_field::EXPRESSION);
+    _buf.end = mp_encode_str(_buf.end, script.data(), static_cast<uint32_t>(script.size()));
+    _buf.end = mp_encode_uint(_buf.end, tnt::body_field::TUPLE);
+    // a caller must append an array of arguments (zero-length one if void)
+}
+
 void iproto_writer::finalize()
 {
     if (_opened_containers.empty())

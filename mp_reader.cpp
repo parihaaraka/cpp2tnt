@@ -143,6 +143,42 @@ mp_array_reader mp_reader::array()
     return mp_array_reader(head, _current_pos, cardinality);
 }
 
+mp_reader& mp_reader::operator>> (mp_map_reader &val) {
+    auto type = mp_typeof(*_current_pos);
+    if (type != MP_MAP)
+        throw mp_reader_error("map expected, got " + mpuck_type_name(type), *this);
+
+    auto head = _current_pos;
+    if (mp_check(&_current_pos, _end))
+        throw mp_reader_error("invalid messagepack", *this);
+    auto cardinality = mp_decode_map(&head);
+
+    val._begin = head;
+    val._end = _current_pos;
+    val._current_pos = head;
+    val._cardinality = cardinality;
+
+    return *this;
+}
+
+mp_reader& mp_reader::operator>> (mp_array_reader &val) {
+    auto type = mp_typeof(*_current_pos);
+    if (type != MP_ARRAY)
+        throw mp_reader_error("array expected, got " + mpuck_type_name(type), *this);
+
+    auto head = _current_pos;
+    if (mp_check(&_current_pos, _end))
+        throw mp_reader_error("invalid messagepack", *this);
+    auto cardinality = mp_decode_array(&head);
+
+    val._begin = head;
+    val._end = _current_pos;
+    val._current_pos = head;
+    val._cardinality = cardinality;
+
+    return *this;
+}
+
 mp_reader mp_reader::iproto_message()
 {
     if (_end - _current_pos < 5)
@@ -162,81 +198,7 @@ mp_reader mp_reader::iproto_message()
 
 string mp_reader::to_string()
 {
-    string res(128, '\0');
-
-    auto type = mp_typeof(*_current_pos);
-    if (type == MP_EXT) // mp_snprint prints 'undefined'
-    {
-        int8_t ext_type;
-        uint32_t val_bytes; // data size
-        const char *val = mp_decode_ext(&_current_pos, &ext_type, &val_bytes);
-        //auto hex_val = hex_dump(val, val + val_bytes);
-        if (ext_type != 1)
-        {
-            res = "undefined";
-            return res;
-        }
-
-        char *pos = res.data();
-        auto sign_nibble = static_cast<uint8_t>(val[--val_bytes]) & 0xF;
-        if (sign_nibble == 0xB || sign_nibble == 0xD)
-            *pos++ = '-';
-        char *first_dec_digit = pos;
-        *first_dec_digit = 'N';  // no output flag
-
-        int8_t nibbles_left = static_cast<int8_t>(val_bytes * 2 - 1);
-        if (!((*(val + 1)) & 0xF0)) // first nibble is 0
-            --nibbles_left;
-
-        int8_t exp = *val;
-        // TODO adjust destination buffer size
-        if (exp > 0 && exp >= nibbles_left)
-        {
-            *pos++ = '0';
-            *pos++ = '.';
-            for (int i = 0; i < exp - nibbles_left; ++i)
-                *pos++ = '0';
-        }
-
-        uint8_t nz_flag = 0;
-        do
-        {
-            uint8_t c = static_cast<uint8_t>(*(++val));
-            if (nibbles_left & 0x1)
-            {
-                *pos = static_cast<char>('0' + (c >> 4));
-                nz_flag |= *pos++;
-                --nibbles_left;
-                if (exp && nibbles_left == exp)
-                    *pos++ = '.';
-            }
-
-            if (nibbles_left)
-            {
-                *pos = static_cast<char>('0' + (c & 0xF));
-                nz_flag |= *pos++;
-                --nibbles_left;
-                if (exp && nibbles_left == exp)
-                    *pos++ = '.';
-            }
-        }
-        while (nibbles_left);
-
-        if (nz_flag) // non-zero digit exists
-        {
-            while (exp++ < 0)
-                *pos++ = '0';
-        }
-        else if (*first_dec_digit == 'N') // no digits at all
-        {
-            *first_dec_digit = '0';
-            pos = first_dec_digit + 1;
-        }
-
-        res.resize(static_cast<size_t>(pos - res.data()));
-        return res;
-    }
-
+    string res(256, '\0');
     int cnt = mp_snprint(res.data(), static_cast<int>(res.size()), _current_pos);
     if (cnt < 0)
     {
@@ -263,6 +225,11 @@ void mp_reader::rewind() noexcept
 bool mp_reader::is_null() const
 {
     return mp_typeof(*_current_pos) == MP_NIL;
+}
+
+bool mp_reader::has_next() const noexcept
+{
+    return _current_pos && _end && _current_pos < _end;
 }
 
 mp_reader &mp_reader::operator>>(string &val)

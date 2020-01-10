@@ -16,6 +16,9 @@ class mp_map_reader;
 class mp_array_reader;
 class mp_reader;
 
+template <typename> struct is_tuple: std::false_type {};
+template <typename ...T> struct is_tuple<std::tuple<T...>>: std::true_type {};
+
 std::string hex_dump(const char *begin, const char *end, const char *pos = nullptr);
 
 const char* ToString(mp_type type);
@@ -45,9 +48,9 @@ public:
     /// Skip current encoded item, verify its type and check content.
     void skip(mp_type type, bool nullable = false);
     /// Return current encoded map within separate reader and move current position to next item.
-    mp_map_reader map();
+    [[deprecated("consider using read<mp_map_reader> instead")]] mp_map_reader map();
     /// Return current encoded array within separate reader and move current position to next item.
-    mp_array_reader array();
+    [[deprecated("consider using read<mp_array_reader> instead")]] mp_array_reader array();
     /// Return current encoded iproto message (header + body) within separate reader
     /// and move current position to next item.
     mp_reader iproto_message();
@@ -57,6 +60,8 @@ public:
     void rewind() noexcept;
     /// Return true if current value is nil.
     bool is_null() const;
+    /// true if msgpack has more values to read
+    bool has_next() const noexcept;
 
     /// true if not empty
     operator bool() const noexcept;
@@ -142,12 +147,31 @@ public:
     template <typename... Args>
     mp_reader& operator>> (std::tuple<Args&...> val);
 
+    mp_reader& operator>> (mp_reader &val)  = delete;
+
+    mp_reader& operator>> (mp_map_reader &val);
+
+    mp_reader& operator>> (mp_array_reader &val);
+
     template <typename T>
-    T value()
+    T read()
     {
         T res;
         *this >> res;
         return res;
+    }
+
+    template <typename T>
+    [[deprecated("consider using read instead")]] T value()
+    {
+        return read<T>();
+    }
+
+    template <typename... Args>
+    mp_reader& values(Args&... args)
+    {
+        ((*this) >> ... >> args);
+        return *this;
     }
 
     template <typename T>
@@ -163,7 +187,7 @@ public:
 
         auto type = mp_typeof(*_current_pos);
         if constexpr (std::is_same_v<T, bool>)
-            return type == MP_BOOL && val == tmp.value<T>();
+            return type == MP_BOOL && val == tmp.read<T>();
 
         else if constexpr (std::is_enum_v<T> || (std::is_integral_v<T> && sizeof(T) < 16))
         {
@@ -186,19 +210,19 @@ public:
             if (val.data() == nullptr)
                 return type == MP_NIL;
             else if (type == MP_STR)
-                return val == tmp.value<std::string_view>();
+                return val == tmp.read<std::string_view>();
         }
         else if constexpr (std::is_same_v<T, std::string>)
         {
             if (type == MP_STR)
-                return val == tmp.value<std::string_view>();
+                return val == tmp.read<std::string_view>();
         }
         else if constexpr (std::is_same_v<typename std::decay_t<T>, char *>)
         {
             if (val == nullptr)
                 return type == MP_NIL;
             else if (type == MP_STR)
-                return val == tmp.value<std::string_view>();
+                return val == tmp.read<std::string_view>();
         }
         else
         {
@@ -285,10 +309,30 @@ public:
     //  We need to preserve mp_array_reader type after every reading operation.
     //using mp_reader::operator>>;
 
-    template <typename T>
+    template <typename T, typename = std::enable_if_t<
+                 (std::is_integral_v<T> && (sizeof(T) < 16)) ||
+                 std::is_same_v<T, std::string> ||
+                 std::is_same_v<T, std::string_view> ||
+                 std::is_same_v<T, std::vector<T>> ||
+                 is_tuple<T>::value
+                 >>
     mp_array_reader& operator>> (T &val)
     {
         mp_reader::operator>>(val);
+        return *this;
+    }
+
+    template <typename KeyT, typename ValueT>
+    mp_array_reader& operator>> (std::map<KeyT, ValueT> &val)
+    {
+        mp_reader::operator>>(val);
+        return *this;
+    }
+
+    template <typename... Args>
+    mp_array_reader& values(Args&... args)
+    {
+        ((*this) >> ... >> args);
         return *this;
     }
 
@@ -327,7 +371,7 @@ mp_reader& mp_reader::operator>> (std::map<K,V>& val)
 template <typename T>
 mp_reader& mp_reader::operator>> (std::vector<T> &val)
 {
-    mp_array_reader arr = array();
+    mp_array_reader arr = read<mp_array_reader>();
     val.resize(arr.cardinality());
     for (size_t i = 0; i < val.size(); ++i)
         arr >> val[i];
@@ -337,7 +381,7 @@ mp_reader& mp_reader::operator>> (std::vector<T> &val)
 template <typename KeyT, typename ValueT>
 mp_reader& mp_reader::operator>> (std::map<KeyT, ValueT> &val)
 {
-    mp_map_reader mp_map = map();
+    mp_map_reader mp_map = read<mp_map_reader>();
     for (size_t i = 0; i < mp_map.cardinality(); ++i)
     {
         KeyT k;
@@ -351,9 +395,9 @@ mp_reader& mp_reader::operator>> (std::map<KeyT, ValueT> &val)
 template <typename... Args>
 mp_reader& mp_reader::operator>> (std::tuple<Args...> &val)
 {
-    mp_array_reader arr = array();
+    mp_array_reader arr = read<mp_array_reader>();
     std::apply(
-        [arr](const auto&... item)
+        [&arr](auto&... item)
         {
             ((arr >> item), ...);
         },
@@ -365,9 +409,9 @@ mp_reader& mp_reader::operator>> (std::tuple<Args...> &val)
 template <typename... Args>
 mp_reader& mp_reader::operator>> (std::tuple<Args&...> val)
 {
-    mp_array_reader arr = array();
+    mp_array_reader arr = read<mp_array_reader>();
     std::apply(
-        [arr](const auto&... item)
+        [&arr](auto&... item)
         {
             ((arr >> item), ...);
         },

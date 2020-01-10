@@ -98,9 +98,17 @@ cs_parts parse_cs(string_view connection_string) noexcept
         case '/': // unix socket
             if (tail[1] == ':')
             {
+                tail.remove_prefix(2);
+                if (chunk == "env")
+                {
+                    string var{tail};
+                    const char *cs = std::getenv(var.c_str());
+                    if (!cs)
+                        return {};
+                    return parse_cs(cs);
+                }
                 if (chunk != "unix")
                     return {};
-                tail.remove_prefix(2);
             }
             if (!res.user.empty())
                 return {};
