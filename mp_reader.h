@@ -18,7 +18,7 @@ class mp_reader;
 
 std::string hex_dump(const char *begin, const char *end, const char *pos = nullptr);
 
-const char* ToString(mp_type type);
+const char* to_string(mp_type type);
 
 /// messagepack parsing error
 class mp_reader_error : public std::runtime_error
