@@ -101,7 +101,7 @@ void connection::process_receive_buffer()
             {
                 mp_reader response = mp_reader(_receive_buffer).iproto_message();
                 uint32_t code;
-                response.map()[header_field::CODE] >> code;
+                response.read<mp_map_reader>()[header_field::CODE] >> code;
                 if (!code)
                 {
                     _receive_buffer.clear();
@@ -122,7 +122,7 @@ void connection::process_receive_buffer()
                     return;
                 }
                 code &= 0x7fff;
-                handle_error(response.map()[response_field::ERROR].to_string(), error::auth, code);
+                handle_error(response.read<mp_map_reader>()[response_field::ERROR].to_string(), error::auth, code);
             }
             catch (const mp_reader_error &e)
             {
