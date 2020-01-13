@@ -79,7 +79,7 @@ namespace tnt
                 header.errCode = 77;
                 header.sync = 0;
                 mp_reader reader(buff);
-                mp_map_reader body = reader.map();
+				auto body = reader.read<mp_map_reader>();
                 resultHundler(header, body, &userData);
             }
         }

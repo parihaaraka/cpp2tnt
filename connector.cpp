@@ -21,7 +21,7 @@ namespace tnt
         {
             try
             {
-                auto encoded_header = r.map();
+				auto encoded_header = r.read<mp_map_reader>();
                 Header header;
                 encoded_header[tnt::header_field::SYNC] >> header.sync;
                 encoded_header[tnt::header_field::CODE] >> header.errCode;
@@ -31,7 +31,7 @@ namespace tnt
                     handle_error("unexpected response");
                 else
                 {
-                    auto encoded_body = r.map();
+					auto encoded_body = r.read<mp_map_reader>();
                     handler->second.handler_(header, encoded_body, (void*)&handler->second.userData_);
                     //handlers_.erase(header.sync);
                     handlers_.erase(handler);
@@ -83,7 +83,7 @@ namespace tnt
         Header header;
         header.errCode = 77;
         mp_reader reader(buff);
-        mp_map_reader body = reader.map();
+		auto body = reader.read<mp_map_reader>();
         for (auto& it : handlers_)
         {
             mp_map_reader body2 = body;

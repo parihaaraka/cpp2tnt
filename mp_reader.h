@@ -313,7 +313,6 @@ public:
                  (std::is_integral_v<T> && (sizeof(T) < 16)) ||
                  std::is_same_v<T, std::string> ||
                  std::is_same_v<T, std::string_view> ||
-                 std::is_same_v<T, std::vector<T>> ||
                  is_tuple<T>::value
                  >>
     mp_array_reader& operator>> (T &val)
@@ -321,6 +320,13 @@ public:
         mp_reader::operator>>(val);
         return *this;
     }
+
+	template <typename T>
+	mp_array_reader& operator>> (std::vector<T> &val)
+	{
+		mp_reader::operator>>(val);
+		return *this;
+	}
 
     template <typename KeyT, typename ValueT>
     mp_array_reader& operator>> (std::map<KeyT, ValueT> &val)
