@@ -16,9 +16,6 @@ class mp_map_reader;
 class mp_array_reader;
 class mp_reader;
 
-template <typename> struct is_tuple: std::false_type {};
-template <typename ...T> struct is_tuple<std::tuple<T...>>: std::true_type {};
-
 std::string hex_dump(const char *begin, const char *end, const char *pos = nullptr);
 
 const char* ToString(mp_type type);
@@ -309,21 +306,17 @@ public:
     //  We need to preserve mp_array_reader type after every reading operation.
     //using mp_reader::operator>>;
 
-    template <typename T, typename = std::enable_if_t<
-                 (std::is_integral_v<T> && (sizeof(T) < 16)) ||
-                 std::is_same_v<T, std::string> ||
-                 std::is_same_v<T, std::string_view> ||
-                 std::is_same_v<T, std::vector<T>> ||
-                 is_tuple<T>::value
-                 >>
+    template <typename T>
     mp_array_reader& operator>> (T &val)
     {
         mp_reader::operator>>(val);
         return *this;
     }
 
-    template <typename KeyT, typename ValueT>
-    mp_array_reader& operator>> (std::map<KeyT, ValueT> &val)
+    template <template <typename, typename> class C,
+              typename T,
+              typename A = std::allocator<T>>
+    mp_array_reader& operator>> (C<T, A> &val)
     {
         mp_reader::operator>>(val);
         return *this;

@@ -24,7 +24,8 @@ int main(int argc, char *argv[])
 
     tnt::connection cn;
     cn.set_connection_string(argc > 1 ? argv[1] : "localhost:3301");
-    // "unix/:/var/run/tarantool/tarantool.sock"
+    //cn.set_connection_string(argc > 1 ? argv[1] : "unix/:/home/dev/100/projects/kickex/accounting/data/accounting.control");
+
     ev_wrapper.take_care(&cn);
 
     ev_signal term_signal_watcher;
@@ -61,7 +62,7 @@ int main(int argc, char *argv[])
 
         cout << "connected" << endl;
         iproto_writer w(cn);
-        w.eval("return 1,2,{3,4},{a=5,b=6},7");
+        w.eval("return 1,2,{3,4},{8,9,10},{a=5,b=6},7,require('decimal').new(100)");
         handlers[cn.last_request_id()] = [&throw_if_error, loop](const mp_map_reader &header, const mp_map_reader &body)
         {
             throw_if_error(header, body);
@@ -69,19 +70,25 @@ int main(int argc, char *argv[])
             auto ret_data = body[tnt::response_field::DATA];
             cout << "response content:" << endl
                  << hex_dump(ret_data.begin(), ret_data.end()) << endl;
-            auto ret_items = ret_data.array();
+            auto ret_items = ret_data.read<mp_array_reader>();
             long a, b, e;
             map<string, int> d;
             tuple<long, long, optional<long>> c;
+            vector<int> vec;
+            //array<int, 3> vec;
             optional<long> f, g;
+            optional<string> dec;
             //ret_items.values(a, b, c, d, e, f, g);
-            ret_items >> a >> b >> c >> d >> e >> f >> g;
-            cout << a << endl
-                 << b << endl
-                 << get<0>(c) << ',' << get<1>(c) << ',' << get<2>(c).value_or(0) << endl;
+            ret_items >> a >> b >> c >> vec >> d >> e >> dec >> f >> g;
+            cout << a << endl << b << endl << '{';
+            for (size_t i = 0; i < vec.size(); ++i)
+                cout << (i ? ",":"") << i;
+            cout << '}' << endl;
+            cout << get<0>(c) << ',' << get<1>(c) << ',' << get<2>(c).value_or(0) << endl;
             for (auto &[k,v]: d)
                 cout << k << ": " << v << endl;
             cout << e << endl
+                 << dec.value_or("") << endl
                  << f.value_or(0) << endl
                  << g.value_or(0) << endl;
             ev_break(loop);
@@ -108,7 +115,7 @@ int main(int argc, char *argv[])
         {
             try
             {
-                auto encoded_header = r.map();
+                auto encoded_header = r.read<mp_map_reader>();
                 uint64_t sync;
                 encoded_header[tnt::header_field::SYNC] >> sync;
                 auto handler = handlers.extract(sync);
@@ -116,7 +123,7 @@ int main(int argc, char *argv[])
                     cout << "orphaned response " << sync << " acquired" << endl;
                 else
                 {
-                    auto encoded_body = r.map();
+                    auto encoded_body = r.read<mp_map_reader>();
                     handler.mapped()(encoded_header, encoded_body);
                 }
             }
