@@ -8,6 +8,9 @@ namespace tnt
 
 using namespace std;
 
+// TODO https://github.com/tarantool/tarantool-c/issues/120
+//      > Support user:pass@unix/:/path/to/socket
+
 cs_parts parse_cs(string_view connection_string) noexcept
 {
     if (connection_string.empty())

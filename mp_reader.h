@@ -304,15 +304,6 @@ public:
         return *this;
     }
 
-    template <template <typename, typename> class C,
-              typename T,
-              typename A = std::allocator<T>>
-    mp_array_reader& operator>> (C<T, A> &val)
-    {
-        mp_reader::operator>>(val);
-        return *this;
-    }
-
     template <typename... Args>
     mp_array_reader& values(Args&... args)
     {

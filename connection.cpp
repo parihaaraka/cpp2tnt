@@ -344,7 +344,7 @@ void connection::open(int delay)
     }
     else if (!_cs_parts.unix_socket_path.empty())
     {
-        unique_socket s = socket(PF_UNIX, SOCK_STREAM, 0);
+        unique_socket s = socket(PF_UNIX, SOCK_STREAM | SOCK_NONBLOCK, 0);
         if (!s)
         {
             handle_error();
@@ -626,7 +626,10 @@ void connection::read()
         _greeting.assign(_receive_buffer.data(), _receive_buffer.size());
         _receive_buffer.clear();
 
-        if (!_cs_parts.user.empty() || _cs_parts.user != "guest" || !_cs_parts.password.empty())
+        if (_cs_parts.unix_socket_path.empty() &&
+                (!_cs_parts.user.empty() ||
+                 _cs_parts.user != "guest" ||
+                 !_cs_parts.password.empty()))
         {
             _state = state::authentication;
 
