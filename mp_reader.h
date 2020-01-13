@@ -18,7 +18,7 @@ class mp_reader;
 
 std::string hex_dump(const char *begin, const char *end, const char *pos = nullptr);
 
-const char* ToString(mp_type type);
+const char* to_string(mp_type type);
 
 /// messagepack parsing error
 class mp_reader_error : public std::runtime_error
@@ -306,17 +306,38 @@ public:
     //  We need to preserve mp_array_reader type after every reading operation.
     //using mp_reader::operator>>;
 
+<<<<<<< HEAD
     template <typename T>
+=======
+    template <typename T, typename = std::enable_if_t<
+                 (std::is_integral_v<T> && (sizeof(T) < 16)) ||
+                 std::is_same_v<T, std::string> ||
+                 std::is_same_v<T, std::string_view> ||
+                 is_tuple<T>::value
+                 >>
+>>>>>>> 2dd1cafebf65f5b98df2a7fd3aa52c6dfcd6d3c5
     mp_array_reader& operator>> (T &val)
     {
         mp_reader::operator>>(val);
         return *this;
     }
 
+<<<<<<< HEAD
     template <template <typename, typename> class C,
               typename T,
               typename A = std::allocator<T>>
     mp_array_reader& operator>> (C<T, A> &val)
+=======
+	template <typename T>
+	mp_array_reader& operator>> (std::vector<T> &val)
+	{
+		mp_reader::operator>>(val);
+		return *this;
+	}
+
+    template <typename KeyT, typename ValueT>
+    mp_array_reader& operator>> (std::map<KeyT, ValueT> &val)
+>>>>>>> 2dd1cafebf65f5b98df2a7fd3aa52c6dfcd6d3c5
     {
         mp_reader::operator>>(val);
         return *this;

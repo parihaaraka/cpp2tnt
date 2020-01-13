@@ -328,7 +328,7 @@ size_t mp_array_reader::cardinality() const noexcept
     return _cardinality;
 }
 
-const char* ToString(mp_type type)
+const char* to_string(mp_type type)
 {
     switch (type)
     {
