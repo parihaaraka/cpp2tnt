@@ -1,6 +1,7 @@
 #include <iostream>
 #include <map>
 #include <optional>
+#include <sstream>
 #include "connection.h"
 #include "ev4cpp2tnt.h"
 #include "proto.h"
@@ -16,6 +17,17 @@ static void signal_cb(struct ev_loop *loop, ev_signal *w, int)
     cout << endl << "caught signal " << w->signum << endl;
     ev_break(loop);
 }
+
+template<typename T>
+string vector2str(T &&vector)
+{
+    stringstream ss;
+    ss << '{';
+    for (size_t i = 0; i < vector.size(); ++i)
+        ss << (i ? ",":"") << vector[i];
+    ss << '}';
+    return ss.str();
+};
 
 int main(int argc, char *argv[])
 {
@@ -62,7 +74,7 @@ int main(int argc, char *argv[])
 
         cout << "connected" << endl;
         iproto_writer w(cn);
-        w.eval("return 1,2,{3,4},{8,9,10},{a=5,b=6},7,require('decimal').new(100)");
+        w.eval("return 1,2,{3,4},{8,9,10},{a=5,b=6},7,require('decimal').new(100),{11,12,13}");
         handlers[cn.last_request_id()] = [&throw_if_error, loop](const mp_map_reader &header, const mp_map_reader &body)
         {
             throw_if_error(header, body);
@@ -78,17 +90,18 @@ int main(int argc, char *argv[])
             //array<int, 3> vec;
             optional<long> f, g;
             optional<string> dec;
+            optional<vector<int>> tail;
+
             //ret_items.values(a, b, c, d, e, f, g);
-            ret_items >> a >> b >> c >> vec >> d >> e >> dec >> f >> g;
-            cout << a << endl << b << endl << '{';
-            for (size_t i = 0; i < vec.size(); ++i)
-                cout << (i ? ",":"") << i;
-            cout << '}' << endl;
-            cout << get<0>(c) << ',' << get<1>(c) << ',' << get<2>(c).value_or(0) << endl;
+            ret_items >> a >> b >> c >> vec >> d >> e >> dec >> tail >> f >> g;
+            cout << a << endl << b << endl
+                 << vector2str(vec) << endl
+                 << get<0>(c) << ',' << get<1>(c) << ',' << get<2>(c).value_or(0) << endl;
             for (auto &[k,v]: d)
                 cout << k << ": " << v << endl;
             cout << e << endl
                  << dec.value_or("") << endl
+                 << vector2str(tail.value_or(vector<int>{})) << endl
                  << f.value_or(0) << endl
                  << g.value_or(0) << endl;
             ev_break(loop);

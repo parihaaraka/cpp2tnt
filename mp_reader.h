@@ -66,15 +66,21 @@ public:
     template <typename T>
     mp_reader& operator>> (std::optional<T> &val)
     {
-        if (mp_typeof(*_current_pos) == MP_NIL)
+        if (_current_pos >= _end)
+        {
+            val = std::nullopt;
+        }
+        else if (mp_typeof(*_current_pos) == MP_NIL)
         {
             mp_decode_nil(&_current_pos);
             val = std::nullopt;
-            return *this;
         }
-        T non_opt;
-        *this >> non_opt;
-        val = std::move(non_opt);
+        else
+        {
+            T non_opt;
+            *this >> non_opt;
+            val = std::move(non_opt);
+        }
         return *this;
     }
 
@@ -280,17 +286,6 @@ public:
     mp_reader operator[](size_t ind) const;
     /// The array's cardinality.
     size_t cardinality() const noexcept;
-
-    template <typename T>
-    mp_array_reader& operator>> (std::optional<T> &val)
-    {
-        // try to interpret out of bounds items as trailing tuple fields with NULL values
-        if (_current_pos >= _end)
-            val = std::nullopt;
-        else
-            mp_reader::operator>>(val);
-        return *this;
-    }
 
     //  Do not do it this way!
     //  It breaks out of bounds reading logic (successful for optionals) by switching to mp_reader.
