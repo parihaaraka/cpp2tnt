@@ -234,13 +234,6 @@ bool mp_reader::has_next() const noexcept
 
 mp_reader &mp_reader::operator>>(string &val)
 {
-<<<<<<< HEAD
-    string_view tmp;
-    *this >> tmp;
-    if (!tmp.data())
-        throw mp_reader_error("string expected, got nil", *this);
-    val.assign(tmp.data(), tmp.size());
-=======
     if (mp_typeof(*_current_pos) == MP_EXT)
     {
         val = to_string();
@@ -253,7 +246,6 @@ mp_reader &mp_reader::operator>>(string &val)
             throw mp_reader_error("string expected, got no data", *this);
         val.assign(tmp.data(), tmp.size());
     }
->>>>>>> 48245713e74d83df4580b8af8266e68d27b02bcb
     return *this;
 }
 
