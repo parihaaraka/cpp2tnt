@@ -30,6 +30,14 @@ std::string mpuck_type_name(mp_type type);
 class mp_reader
 {
 public:
+    class none {
+    private:
+        none() = default;
+    public:
+        static none& instance() { static none tmp; return tmp; }
+    };
+    static none& none() { return none::instance(); };
+
     mp_reader(const wtf_buffer &buf);
     mp_reader(const char *begin = nullptr, const char *end = nullptr);
     const char* begin() const noexcept;
@@ -62,6 +70,8 @@ public:
 
     mp_reader& operator>> (std::string &val);
     mp_reader& operator>> (std::string_view &val);
+    /// Use >> mp_reader::none() to skip a value
+    mp_reader& operator>> (class none&);
 
     template <typename T>
     mp_reader& operator>> (std::optional<T> &val)
@@ -280,6 +290,9 @@ private:
 class mp_array_reader : public mp_reader
 {
 public:
+    mp_array_reader(const wtf_buffer &buf);
+    mp_array_reader(const char *begin, const char *end);
+
     mp_array_reader() = default;
     /// Return reader for a value with specified index.
     /// Current parsing position stays unchanged. Throws if specified index out of bounds.

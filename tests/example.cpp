@@ -120,7 +120,7 @@ int main(int argc, char *argv[])
         cout << "disconnected" << endl;
     });
 
-    cn.on_response([&cn, &handlers](wtf_buffer &buf)
+    cn.on_response([&cn, &handlers, &loop](wtf_buffer &buf)
     {
         cout << buf.size() << " bytes acquired:" << endl;
         mp_reader bunch{buf};
@@ -143,11 +143,13 @@ int main(int argc, char *argv[])
             catch(const mp_reader_error &e)
             {
                 cout << e.what() << endl;
+                ev_break(loop);
             }
             catch(const exception &e)
             {
                 cout << e.what() << endl
                      << hex_dump(r.begin(), r.end()) << endl;
+                ev_break(loop);
             }
         }
         cn.input_processed();

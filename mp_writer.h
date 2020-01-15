@@ -31,6 +31,7 @@ public:
     /// value (counted untill now).
     void finalize();
 
+    mp_writer& operator<< (std::nullptr_t);
     mp_writer& operator<< (const std::string_view &val);
     mp_writer& operator<< (const mp_writer &data);
 

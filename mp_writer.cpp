@@ -129,6 +129,14 @@ void mp_writer::finalize()
     }
 }
 
+mp_writer &mp_writer::operator<<(nullptr_t)
+{
+    _buf.end = mp_encode_nil(_buf.end);
+    if (!_opened_containers.empty())
+        ++_opened_containers.top().items_count;
+    return *this;
+}
+
 mp_writer& mp_writer::operator<<(const string_view &val)
 {
     if (val.data() == nullptr)

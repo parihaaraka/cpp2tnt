@@ -117,30 +117,16 @@ void mp_reader::skip(mp_type type, bool nullable)
 
 mp_map_reader mp_reader::map()
 {
-    auto type = mp_typeof(*_current_pos);
-    if (type != MP_MAP)
-        throw mp_reader_error("map expected, got " + mpuck_type_name(type), *this);
-
-    auto head = _current_pos;
-    if (mp_check(&_current_pos, _end))
-        throw mp_reader_error("invalid messagepack", *this);
-    auto cardinality = mp_decode_map(&head);
-
-    return mp_map_reader(head, _current_pos, cardinality);
+    mp_map_reader tmp;
+    *this >> tmp;
+    return tmp;
 }
 
 mp_array_reader mp_reader::array()
 {
-    auto type = mp_typeof(*_current_pos);
-    if (type != MP_ARRAY)
-        throw mp_reader_error("array expected, got " + mpuck_type_name(type), *this);
-
-    auto head = _current_pos;
-    if (mp_check(&_current_pos, _end))
-        throw mp_reader_error("invalid messagepack", *this);
-    auto cardinality = mp_decode_array(&head);
-
-    return mp_array_reader(head, _current_pos, cardinality);
+    mp_array_reader tmp;
+    *this >> tmp;
+    return tmp;
 }
 
 mp_reader& mp_reader::operator>> (mp_map_reader &val) {
@@ -277,6 +263,12 @@ mp_reader &mp_reader::operator>>(string_view &val)
     return *this;
 }
 
+mp_reader &mp_reader::operator>>(class mp_reader::none &)
+{
+    mp_next(&_current_pos);
+    return *this;
+}
+
 mp_reader::operator bool() const noexcept
 {
     return _begin && _end && _end > _begin;
@@ -299,6 +291,17 @@ size_t mp_map_reader::cardinality() const noexcept
 mp_array_reader::mp_array_reader(const char *begin, const char *end, size_t cardinality)
     : mp_reader(begin, end), _cardinality(cardinality)
 {
+}
+
+mp_array_reader::mp_array_reader(const wtf_buffer &buf)
+    : mp_array_reader(buf.data(), buf.end)
+{
+}
+
+mp_array_reader::mp_array_reader(const char *begin, const char *end)
+    : mp_reader(begin, end)
+{
+    mp_reader::operator>>(*this);
 }
 
 mp_reader mp_array_reader::operator[](size_t ind) const
