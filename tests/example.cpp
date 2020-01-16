@@ -93,7 +93,19 @@ int main(int argc, char *argv[])
             optional<vector<int>> tail;
 
             auto ret_items_bak = ret_items;
-            ret_items >> a >> b >> c >> vec >> d >> e >> dec >> tail >> f >> g;
+            ret_items >> a >> b >> c >> vec >> d >> e;
+
+            auto ti2 = ret_items;
+            auto s1 = ret_items.to_string();
+            string s2;
+            ti2 >> s2;
+            cout << endl
+                 << "------------" << endl
+                 << s1 << endl
+                 << s2 << endl
+                 << "------------" << endl;
+
+            ret_items >> tail >> f >> g;
             cout << a << endl << b << endl
                  << vector2str(vec) << endl
                  << get<0>(c) << ',' << get<1>(c) << ',' << get<2>(c).value_or(0) << endl;

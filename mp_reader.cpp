@@ -187,7 +187,16 @@ mp_reader &mp_reader::operator>>(string &val)
 {
     if (mp_typeof(*_current_pos) == MP_EXT)
     {
-        val = to_string();
+        val.resize(128, '\0');
+        const char *end;
+        size_t len = mp_snprint_ext(val.data(), val.size(), _current_pos, &end);
+        if (len > 128)
+        {
+            val.resize(len, '\0');
+            mp_snprint_ext(val.data(), len, _current_pos, &end);
+        }
+        _current_pos = end;
+        val.resize(len);
     }
     else
     {
