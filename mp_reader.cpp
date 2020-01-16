@@ -79,26 +79,6 @@ mp_reader::mp_reader(const char *begin, const char *end)
     _end = end;
 }
 
-const char* mp_reader::begin() const noexcept
-{
-    return _begin;
-}
-
-const char* mp_reader::end() const noexcept
-{
-    return _end;
-}
-
-const char* mp_reader::pos() const noexcept
-{
-    return _current_pos;
-}
-
-void mp_reader::fast_skip()
-{
-    mp_next(&_current_pos);
-}
-
 void mp_reader::skip()
 {
     // TODO
@@ -203,21 +183,6 @@ string mp_reader::to_string()
     return res;
 }
 
-void mp_reader::rewind() noexcept
-{
-    _current_pos = _begin;
-}
-
-bool mp_reader::is_null() const
-{
-    return mp_typeof(*_current_pos) == MP_NIL;
-}
-
-bool mp_reader::has_next() const noexcept
-{
-    return _current_pos && _end && _current_pos < _end;
-}
-
 mp_reader &mp_reader::operator>>(string &val)
 {
     if (mp_typeof(*_current_pos) == MP_EXT)
@@ -263,27 +228,11 @@ mp_reader &mp_reader::operator>>(string_view &val)
     return *this;
 }
 
-mp_reader &mp_reader::operator>>(class mp_reader::none &)
-{
-    mp_next(&_current_pos);
-    return *this;
-}
-
-mp_reader::operator bool() const noexcept
-{
-    return _begin && _end && _end > _begin;
-}
-
 // ------------------------------------------------------------------------------------------------
 
 mp_map_reader::mp_map_reader(const char *begin, const char *end, size_t cardinality)
     : mp_reader(begin, end), _cardinality(cardinality)
 {
-}
-
-size_t mp_map_reader::cardinality() const noexcept
-{
-    return _cardinality;
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -316,9 +265,4 @@ mp_reader mp_array_reader::operator[](size_t ind) const
     auto begin = ptr;
     mp_next(&ptr);
     return {begin, ptr};
-}
-
-size_t mp_array_reader::cardinality() const noexcept
-{
-    return _cardinality;
 }

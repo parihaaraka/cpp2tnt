@@ -30,48 +30,104 @@ std::string mpuck_type_name(mp_type type);
 class mp_reader
 {
 public:
-    class none {
-    private:
-        none() = default;
-    public:
-        static none& instance() { static none tmp; return tmp; }
-    };
-    static none& none() { return none::instance(); };
-
     mp_reader(const wtf_buffer &buf);
     mp_reader(const char *begin = nullptr, const char *end = nullptr);
-    const char* begin() const noexcept;
-    const char* end() const noexcept;
-    const char* pos() const noexcept;
+
+    template <std::size_t N = 1>
+    class none_t {
+    private:
+        none_t() = default;
+    public:
+        static none_t& instance()
+        {
+            static none_t tmp; return tmp;
+        }
+    };
+
+    template <std::size_t N = 1>
+    static none_t<N>& none()
+    {
+        return none_t<N>::instance();
+    }
+
+    inline const char* begin() const noexcept
+    {
+        return _begin;
+    }
+
+    inline const char* end() const noexcept
+    {
+        return _end;
+    }
+
+    inline const char* pos() const noexcept
+    {
+        return _current_pos;
+    }
+
     /// Skip current encoded item (in case of array/map skips all its elements).
-    void fast_skip();
+    inline void fast_skip()
+    {
+        mp_next(&_current_pos);
+    }
+
     /// Skip current encoded item (in case of array/map skips all its elements) and check content.
     void skip();
     /// Skip current encoded item, verify its type and check content.
     void skip(mp_type type, bool nullable = false);
+
     /// Return current encoded map within separate reader and move current position to next item.
     [[deprecated("consider using read<mp_map_reader> instead")]] mp_map_reader map();
     /// Return current encoded array within separate reader and move current position to next item.
     [[deprecated("consider using read<mp_array_reader> instead")]] mp_array_reader array();
+
     /// Return current encoded iproto message (header + body) within separate reader
     /// and move current position to next item.
     mp_reader iproto_message();
+
     /// Extract and serialize value to string (nil -> 'null') and move current position to next item.
     std::string to_string();
+
     /// Reset current reading position back to the beginning.
-    void rewind() noexcept;
+    inline void rewind() noexcept
+    {
+        _current_pos = _begin;
+    }
+
     /// Return true if current value is nil.
-    bool is_null() const;
+    inline bool is_null() const
+    {
+        return mp_typeof(*_current_pos) == MP_NIL;
+    }
+
     /// true if msgpack has more values to read
-    bool has_next() const noexcept;
+    inline bool has_next() const noexcept
+    {
+        return _current_pos && _end && _current_pos < _end;
+    }
 
     /// true if not empty
-    operator bool() const noexcept;
+    inline operator bool() const noexcept
+    {
+        return _begin && _end && _end > _begin;
+    }
 
     mp_reader& operator>> (std::string &val);
     mp_reader& operator>> (std::string_view &val);
-    /// Use >> mp_reader::none() to skip a value
-    mp_reader& operator>> (class none&);
+
+    /// Use >> mp_reader::none() to skip a value or mp_reader::none<N>() to skip N values
+    template<size_t N = 1>
+    mp_reader& operator>> (none_t<N>&)
+    {
+        for (int i = 0; i < N; ++i)
+        {
+            if (has_next())
+                mp_next(&_current_pos);
+            else
+                throw mp_reader_error("read out of bounds", *this);
+        }
+        return *this;
+    }
 
     template <typename T>
     mp_reader& operator>> (std::optional<T> &val)
@@ -278,7 +334,10 @@ public:
     }
 
     /// The map's cardinality.
-    size_t cardinality() const noexcept;
+    inline size_t cardinality() const noexcept
+    {
+        return _cardinality;
+    }
 
 private:
     friend class mp_reader;
@@ -297,12 +356,16 @@ public:
     /// Return reader for a value with specified index.
     /// Current parsing position stays unchanged. Throws if specified index out of bounds.
     mp_reader operator[](size_t ind) const;
-    /// The array's cardinality.
-    size_t cardinality() const noexcept;
 
-    //  Do not do it this way!
-    //  It breaks out of bounds reading logic (successful for optionals) by switching to mp_reader.
-    //  We need to preserve mp_array_reader type after every reading operation.
+    /// The array's cardinality.
+    inline size_t cardinality() const noexcept
+    {
+        return _cardinality;
+    }
+
+    // Commented to preserve mp_array_reader type during reading.
+    // The main reason is deprecated due to replacing the logic of
+    // reading a tail into optionals into mp_reader.
     //using mp_reader::operator>>;
 
     template <typename T>

@@ -92,7 +92,7 @@ int main(int argc, char *argv[])
             optional<string> dec;
             optional<vector<int>> tail;
 
-            //ret_items.values(a, b, c, d, e, f, g);
+            auto ret_items_bak = ret_items;
             ret_items >> a >> b >> c >> vec >> d >> e >> dec >> tail >> f >> g;
             cout << a << endl << b << endl
                  << vector2str(vec) << endl
@@ -104,6 +104,8 @@ int main(int argc, char *argv[])
                  << vector2str(tail.value_or(vector<int>{})) << endl
                  << f.value_or(0) << endl
                  << g.value_or(0) << endl;
+            ret_items_bak >> mp_reader::none() >> mp_reader::none<4>() >> a;
+            cout << endl << "sixth value: " << a << endl;
             ev_break(loop);
         };
         w.encode_ping_request();
