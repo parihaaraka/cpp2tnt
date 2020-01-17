@@ -14,9 +14,11 @@ extern std::string hex_dump(const char *begin, const char *end, const char *pos)
 
 template <typename T>
 typename std::enable_if_t<std::is_same_v<T, __int128_t>, mp_reader&>
-operator>> (mp_reader& r, T &)
+operator>> (mp_reader& r, T &val)
 {
-    // dummy
+    // dummy - just to test external operator overloading
+    val = 0;
+    r.skip();
     return r;
 }
 
@@ -91,11 +93,23 @@ int main(int argc, char *argv[])
             cout << "response content:" << endl
                  << hex_dump(ret_data.begin(), ret_data.end()) << endl;
             auto ret_items = ret_data.read<mp_array_reader>();
-            long a, b, e, h;
+
+            vector<int> vec;
+            mp_array_reader tmp = ret_items.as_array(3);
+            cout << endl;
+            while (tmp.has_next())
+                cout << tmp.to_string() << ',';
+            cout << endl;
+
+            tmp = ret_items.as_array(4);
+            while (tmp.has_next())
+                cout << tmp.to_string() << ',';
+            cout << endl;
+
+            __int128_t a;
+            long b, e, h;
             map<string, int> d;
             tuple<long, long, optional<long>> c;
-            vector<int> vec;
-            //array<int, 3> vec;
             optional<long> f, g;
             optional<string> dec;
             optional<vector<int>> tail;
@@ -115,7 +129,7 @@ int main(int argc, char *argv[])
 
             ret_items >> tail >> f >> g;
             h = ret_items.read_or(-1);
-            cout << a << endl << b << endl
+            cout << endl << b << endl
                  << vector2str(vec) << endl
                  << get<0>(c) << ',' << get<1>(c) << ',' << get<2>(c).value_or(0) << endl;
             for (auto &[k,v]: d)
@@ -125,8 +139,8 @@ int main(int argc, char *argv[])
                  << vector2str(tail.value_or(vector<int>{})) << endl
                  << f.value_or(0) << endl
                  << g.value_or(0) << endl;
-            ret_items_bak >> mp_reader::none() >> mp_reader::none<4>() >> a;
-            cout << endl << "sixth value: " << a << endl;
+            ret_items_bak >> mp_reader::none() >> mp_reader::none<4>() >> b;
+            cout << endl << "sixth value: " << b << endl;
             ev_break(loop);
         };
         w.encode_ping_request();

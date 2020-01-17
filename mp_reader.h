@@ -21,7 +21,7 @@ std::string hex_dump(const char *begin, const char *end, const char *pos = nullp
 class mp_reader_error : public std::runtime_error
 {
 public:
-    explicit mp_reader_error(const std::string &msg, const mp_reader &reader);
+    explicit mp_reader_error(const std::string &msg, const mp_reader &reader, const char *pos = nullptr);
 };
 
 std::string mpuck_type_name(mp_type type);
@@ -65,21 +65,19 @@ public:
         return _current_pos;
     }
 
-    /// Skip current encoded item (in case of array/map skips all its elements).
-    inline void fast_skip()
+    /// Skip current encoded item (in case of array/map skips all its elements) and check content.
+    inline void skip()
     {
-        mp_next(&_current_pos);
+        skip(&_current_pos);
     }
 
-    /// Skip current encoded item (in case of array/map skips all its elements) and check content.
-    void skip();
-    /// Skip current encoded item, verify its type and check content.
+    /// Skip MsgPack item pointed by pos (within current buffer)
+    void skip(const char **pos) const;
+    /// Skip current encoded item and ensure it has expected type.
     void skip(mp_type type, bool nullable = false);
 
-    /// Return current encoded map within separate reader and move current position to next item.
-    [[deprecated("consider using read<mp_map_reader> instead")]] mp_map_reader map();
-    /// Return current encoded array within separate reader and move current position to next item.
-    [[deprecated("consider using read<mp_array_reader> instead")]] mp_array_reader array();
+    /// Interpret item as an array via mp_array_reader.
+    mp_array_reader as_array(size_t ind = 0) const;
 
     /// Return current encoded iproto message (header + body) within separate reader
     /// and move current position to next item.
@@ -87,6 +85,9 @@ public:
 
     /// Extract and serialize value to string (nil -> 'null') and move current position to next item.
     std::string to_string();
+
+    /// Validate MsgPack within current buffer (all items)
+    void check() const;
 
     /// Reset current reading position back to the beginning.
     inline void rewind() noexcept
@@ -119,17 +120,12 @@ public:
     mp_reader& operator>> (std::string &val);
     mp_reader& operator>> (std::string_view &val);
 
-    /// Use >> mp_reader::none() to skip a value or mp_reader::none<N>() to skip N values
+    /// Use >> mp_reader::none() to skip a value or mp_reader::none<N>() to skip N items
     template<size_t N = 1>
     mp_reader& operator>> (none_t<N>&)
     {
         for (int i = 0; i < N; ++i)
-        {
-            if (has_next())
-                mp_next(&_current_pos);
-            else
-                throw mp_reader_error("read out of bounds", *this);
-        }
+            skip();
         return *this;
     }
 
@@ -142,7 +138,7 @@ public:
         }
         else if (mp_typeof(*_current_pos) == MP_NIL)
         {
-            mp_decode_nil(&_current_pos);
+            skip();
             val = std::nullopt;
         }
         else
@@ -158,24 +154,25 @@ public:
     template <typename T, typename = std::enable_if_t<std::is_integral_v<T> && sizeof(T) < 16>>
     mp_reader& operator>> (T &val)
     {
-        if (_current_pos >= _end)
-            throw mp_reader_error("read out of bounds", *this);
+        const char *data = _current_pos;
+        const char *prev_pos = _current_pos;
+        skip();
 
-        auto type = mp_typeof(*_current_pos);
+        auto type = mp_typeof(*data);
         if constexpr (std::is_same_v<T, bool>)
         {
             if (type == MP_BOOL)
             {
-                val = mp_decode_bool(&_current_pos);
+                val = mp_decode_bool(&data);
                 return *this;
             }
-            throw mp_reader_error("boolean expected, got " + mpuck_type_name(type), *this);
+            throw mp_reader_error("boolean expected, got " + mpuck_type_name(type), *this, prev_pos);
         }
         else
         {
             if (type == MP_UINT)
             {
-                uint64_t res = mp_decode_uint(&_current_pos);
+                uint64_t res = mp_decode_uint(&data);
                 if (res <= std::numeric_limits<T>::max())
                 {
                     val = static_cast<T>(res);
@@ -184,7 +181,7 @@ public:
             }
             else if (type == MP_INT)
             {
-                int64_t res = mp_decode_int(&_current_pos);
+                int64_t res = mp_decode_int(&data);
                 if (res <= std::numeric_limits<T>::max() && res >= std::numeric_limits<T>::min())
                 {
                     val = static_cast<T>(res);
@@ -193,7 +190,7 @@ public:
             }
             else
             {
-                throw mp_reader_error("integer expected, got " + mpuck_type_name(type), *this);
+                throw mp_reader_error("integer expected, got " + mpuck_type_name(type), *this, prev_pos);
             }
             throw mp_reader_error("value overflow", *this);
         }
@@ -234,16 +231,10 @@ public:
         }
         else if (mp_typeof(*_current_pos) == MP_NIL)
         {
-            mp_decode_nil(&_current_pos);
+            skip();
             return def;
         }
 
-        return read<T>();
-    }
-
-    template <typename T>
-    [[deprecated("consider using read instead")]] T value()
-    {
         return read<T>();
     }
 
@@ -257,12 +248,9 @@ public:
     template <typename T>
     bool equals(const T &val) const
     {
-        if (_current_pos >= _end)
-            throw mp_reader_error("read out of bounds", *this);
-
         auto begin = _current_pos;
         auto end = begin;
-        mp_next(&end);
+        skip(&end);
         mp_reader tmp(begin, end);
 
         auto type = mp_typeof(*_current_pos);
@@ -341,10 +329,10 @@ public:
         while (n-- > 0)
         {
             bool found = tmp.equals(key);
-            tmp.fast_skip(); // skip a key
+            tmp.skip(); // skip a key
 
             auto value_begin = tmp.pos();
-            tmp.fast_skip();
+            tmp.skip();
             auto value_end = tmp.pos();
 
             if (found)
