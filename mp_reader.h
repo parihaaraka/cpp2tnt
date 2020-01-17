@@ -112,6 +112,10 @@ public:
         return _begin && _end && _end > _begin;
     }
 
+    /// Return reader for a value with specified index.
+    /// Current parsing position stays unchanged. Throws if specified index out of bounds.
+    mp_reader operator[](size_t ind) const;
+
     mp_reader& operator>> (std::string &val);
     mp_reader& operator>> (std::string_view &val);
 
@@ -219,6 +223,22 @@ public:
         T res;
         *this >> res;
         return res;
+    }
+
+    template <typename T>
+    T read_or(T &&def)
+    {
+        if (_current_pos >= _end)
+        {
+            return def;
+        }
+        else if (mp_typeof(*_current_pos) == MP_NIL)
+        {
+            mp_decode_nil(&_current_pos);
+            return def;
+        }
+
+        return read<T>();
     }
 
     template <typename T>
@@ -351,11 +371,7 @@ class mp_array_reader : public mp_reader
 public:
     mp_array_reader(const wtf_buffer &buf);
     mp_array_reader(const char *begin, const char *end);
-
     mp_array_reader() = default;
-    /// Return reader for a value with specified index.
-    /// Current parsing position stays unchanged. Throws if specified index out of bounds.
-    mp_reader operator[](size_t ind) const;
 
     /// The array's cardinality.
     inline size_t cardinality() const noexcept
@@ -363,17 +379,7 @@ public:
         return _cardinality;
     }
 
-    // Commented to preserve mp_array_reader type during reading.
-    // The main reason is deprecated due to replacing the logic of
-    // reading a tail into optionals into mp_reader.
-    //using mp_reader::operator>>;
-
-    template <typename T>
-    mp_array_reader& operator>> (T &val)
-    {
-        mp_reader::operator>>(val);
-        return *this;
-    }
+    using mp_reader::operator>>;
 
     template <typename... Args>
     mp_array_reader& values(Args&... args)

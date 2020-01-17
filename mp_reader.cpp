@@ -187,10 +187,10 @@ mp_reader &mp_reader::operator>>(string &val)
 {
     if (mp_typeof(*_current_pos) == MP_EXT)
     {
-        val.resize(128, '\0');
+        val.resize(64, '\0');
         const char *end;
         size_t len = mp_snprint_ext(val.data(), val.size(), _current_pos, &end);
-        if (len > 128)
+        if (len > val.size())
         {
             val.resize(len, '\0');
             mp_snprint_ext(val.data(), len, _current_pos, &end);
@@ -237,6 +237,22 @@ mp_reader &mp_reader::operator>>(string_view &val)
     return *this;
 }
 
+mp_reader mp_reader::operator[](size_t ind) const
+{
+    const char *ptr = _begin;
+    for (size_t i = 0; i < ind; ++i)
+    {
+        if (has_next())
+            mp_next(&ptr);
+        else
+            throw mp_reader_error("read out of bounds", *this);
+    }
+
+    auto begin = ptr;
+    mp_next(&ptr);
+    return {begin, ptr};
+}
+
 // ------------------------------------------------------------------------------------------------
 
 mp_map_reader::mp_map_reader(const char *begin, const char *end, size_t cardinality)
@@ -260,18 +276,4 @@ mp_array_reader::mp_array_reader(const char *begin, const char *end)
     : mp_reader(begin, end)
 {
     mp_reader::operator>>(*this);
-}
-
-mp_reader mp_array_reader::operator[](size_t ind) const
-{
-    if (ind >= _cardinality)
-        throw mp_reader_error("index out of range", *this);
-
-    const char *ptr = _begin;
-    for (size_t i = 0; i < ind; ++i)
-        mp_next(&ptr);
-
-    auto begin = ptr;
-    mp_next(&ptr);
-    return {begin, ptr};
 }

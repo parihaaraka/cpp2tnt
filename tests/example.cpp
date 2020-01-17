@@ -12,6 +12,14 @@ using namespace std;
 
 extern std::string hex_dump(const char *begin, const char *end, const char *pos);
 
+template <typename T>
+typename std::enable_if_t<std::is_same_v<T, __int128_t>, mp_reader&>
+operator>> (mp_reader& r, T &)
+{
+    // dummy
+    return r;
+}
+
 static void signal_cb(struct ev_loop *loop, ev_signal *w, int)
 {
     cout << endl << "caught signal " << w->signum << endl;
@@ -83,7 +91,7 @@ int main(int argc, char *argv[])
             cout << "response content:" << endl
                  << hex_dump(ret_data.begin(), ret_data.end()) << endl;
             auto ret_items = ret_data.read<mp_array_reader>();
-            long a, b, e;
+            long a, b, e, h;
             map<string, int> d;
             tuple<long, long, optional<long>> c;
             vector<int> vec;
@@ -106,6 +114,7 @@ int main(int argc, char *argv[])
                  << "------------" << endl;
 
             ret_items >> tail >> f >> g;
+            h = ret_items.read_or(-1);
             cout << a << endl << b << endl
                  << vector2str(vec) << endl
                  << get<0>(c) << ',' << get<1>(c) << ',' << get<2>(c).value_or(0) << endl;
