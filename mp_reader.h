@@ -76,7 +76,8 @@ public:
     /// Skip current encoded item and ensure it has expected type.
     void skip(mp_type type, bool nullable = false);
 
-    /// Interpret item as an array via mp_array_reader.
+    /// Interpret any item as an array via mp_array_reader (?!).
+    /// Bad try to simpify things... You'd better don't use it :)
     mp_array_reader as_array(size_t ind = 0) const;
 
     /// Return current encoded iproto message (header + body) within separate reader
