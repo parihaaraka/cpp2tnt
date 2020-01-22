@@ -12,6 +12,7 @@
 #define MSG_NOSIGNAL 0
 #endif
 
+// both setsockopt(TCP_USER_TIMEOUT) and reconnect delay (seconds)
 #define GENERAL_TIMEOUT 10
 
 std::function<void(tnt::connection*)> tnt::connection::_on_construct_global_cb;
@@ -34,7 +35,7 @@ namespace tnt
 using namespace std;
 
 connection::connection(std::string_view connection_string)
-    : _current_cs(connection_string)
+    : _current_cs(connection_string), _delay(GENERAL_TIMEOUT)
 {
     _next_to_send = _send_buffer.data();
     _receive_buffer.on_clear = [this]() noexcept {
@@ -235,7 +236,7 @@ void connection::address_resolved(const addrinfo *addr_info)
         //     keepalive (SO_KEEPALIVE) option, TCP_USER_TIMEOUT will
         //     override keepalive to determine when to close a connection due
         //     to keepalive failure.
-        opt = GENERAL_TIMEOUT * 1000;
+        opt = GENERAL_TIMEOUT * 1000; // milliseconds
         setsockopt(s.handle(), SOL_TCP, TCP_USER_TIMEOUT, &opt, sizeof(opt));
         // bad luck to get errors here, but why would we stop connecting?
 
@@ -277,7 +278,8 @@ void connection::open(int delay)
 
     if (delay > 0)
     {
-        _idle_seconds_counter = delay;
+        _idle_seconds_counter = 0;
+        _delay = delay;
         return;
     }
 
@@ -287,6 +289,7 @@ void connection::open(int delay)
         return;
     }
 
+    _delay = GENERAL_TIMEOUT; // reset _delay which could be changed
     _idle_seconds_counter = -1;
     _cs_parts = parse_cs(_current_cs);
     if (!_cs_parts.host.empty())
@@ -382,14 +385,21 @@ void connection::open(int delay)
     }
 }
 
-void connection::close(bool call_disconnect_handler, bool reconnect_soon) noexcept
+void connection::close(bool call_disconnect_handler, int autoreconnect_delay) noexcept
 {
     auto prev_async_stage = _state;
     _greeting.clear();
     _state = state::disconnected;
-    _idle_seconds_counter = reconnect_soon ? 0 : -1;
     _request_id = 0;
-
+    if (autoreconnect_delay > 0)
+    {
+        _idle_seconds_counter = autoreconnect_delay;
+        _delay = autoreconnect_delay;
+    }
+    else
+    {
+        _idle_seconds_counter = -1;
+    }
     if (!_socket)
         return;
 
@@ -520,7 +530,7 @@ void connection::input_processed()
 
 void connection::tick_1sec() noexcept
 {
-    if (_idle_seconds_counter >= 0 && ++_idle_seconds_counter >= GENERAL_TIMEOUT)
+    if (_idle_seconds_counter >= 0 && ++_idle_seconds_counter >= _delay)
     {
         if (_state == state::disconnected) // waiting for reconnect
         {

@@ -10,6 +10,31 @@
 #include <functional>
 #include "msgpuck/msgpuck.h"
 
+#if defined _WIN32 || defined __CYGWIN__
+  #ifdef BUILDING_DLL
+    #ifdef __GNUC__
+      #define DLL_PUBLIC __attribute__ ((dllexport))
+    #else
+      #define DLL_PUBLIC __declspec(dllexport)
+    #endif
+  #else
+    #ifdef __GNUC__
+      #define DLL_PUBLIC __attribute__ ((dllimport))
+    #else
+      #define DLL_PUBLIC __declspec(dllimport)
+    #endif
+  #endif
+  #define DLL_LOCAL
+#else
+  #if __GNUC__ >= 4
+    #define DLL_PUBLIC __attribute__ ((visibility ("default")))
+    #define DLL_LOCAL  __attribute__ ((visibility ("hidden")))
+  #else
+    #define DLL_PUBLIC
+    #define DLL_LOCAL
+  #endif
+#endif
+
 class wtf_buffer;
 class mp_map_reader;
 class mp_array_reader;
@@ -18,11 +43,14 @@ class mp_reader;
 std::string hex_dump(const char *begin, const char *end, const char *pos = nullptr);
 
 /// messagepack parsing error
-class mp_reader_error : public std::runtime_error
+class DLL_PUBLIC mp_reader_error : public std::runtime_error
 {
 public:
     explicit mp_reader_error(const std::string &msg, const mp_reader &reader, const char *pos = nullptr);
 };
+
+#undef DLL_PUBLIC
+#undef DLL_LOCAL
 
 std::string mpuck_type_name(mp_type type);
 

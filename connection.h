@@ -49,6 +49,7 @@ private:
     std::string _greeting;
     cs_parts _cs_parts;
     int _idle_seconds_counter = -1;     ///< timeout counter
+    int _delay;
 
     /** The connection must be notified when _input_buffer was processed
      *  by caller completely. An external worker must not use _input_buffer
@@ -115,7 +116,7 @@ public:
     ~connection();
 
     void open(int delay = 0);
-    void close(bool call_disconnect_handler = true, bool reconnect_soon = false) noexcept;
+    void close(bool call_disconnect_handler = true, int autoreconnect_delay = 0) noexcept;
     void set_connection_string(std::string_view connection_string);
     /** Thread-safe method to initiate a handler call in the connector's thread */
     void push_handler(fu2::unique_function<void()> &&handler);
