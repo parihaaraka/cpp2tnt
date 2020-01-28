@@ -130,6 +130,27 @@ void mp_writer::finalize()
     }
 }
 
+void mp_writer::write(const char *begin, const char *end, size_t cardinality)
+{
+    // make sure the destination has free space
+    copy(begin, end, _buf.end);
+    _buf.resize(_buf.size() + end - begin);
+
+    if (!_opened_containers.empty())
+    {
+        if (!cardinality)
+        {
+            mp_reader mp{begin, end};
+            while (mp.has_next())
+            {
+                mp.skip();
+                ++cardinality;
+            }
+        }
+        _opened_containers.top().items_count += cardinality;
+    }
+}
+
 mp_writer &mp_writer::operator<<(nullptr_t)
 {
     _buf.end = mp_encode_nil(_buf.end);
@@ -149,26 +170,6 @@ mp_writer& mp_writer::operator<<(const string_view &val)
 
     if (!_opened_containers.empty())
         ++_opened_containers.top().items_count;
-    return *this;
-}
-
-mp_writer& mp_writer::operator<<(const mp_writer &data)
-{
-    // make sure the destination has free space
-    copy(data._buf.data(), data._buf.end, _buf.end);
-    _buf.resize(_buf.size() + data._buf.size());
-
-    if (!_opened_containers.empty())
-    {
-        size_t cardinality = 0;
-        mp_reader mp(data._buf);
-        while (mp.has_next())
-        {
-            mp.skip();
-            ++cardinality;
-        }
-        _opened_containers.top().items_count += cardinality;
-    }
     return *this;
 }
 

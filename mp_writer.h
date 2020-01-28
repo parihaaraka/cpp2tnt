@@ -31,9 +31,24 @@ public:
     /// value (counted untill now).
     void finalize();
 
+    /// Append msgpack buffer.
+    void write(const char *begin, const char *end, size_t cardinality = 0);
+    /// Append msgpack buffer.
+    inline void write(const wtf_buffer &data, size_t cardinality = 0)
+    {
+        write(data.data(), data.end, cardinality);
+    }
+
+    inline operator const wtf_buffer&() const noexcept { return _buf; }
+    inline wtf_buffer& buf() const noexcept { return _buf; }
+
     mp_writer& operator<< (std::nullptr_t);
     mp_writer& operator<< (const std::string_view &val);
-    mp_writer& operator<< (const mp_writer &data);
+    inline mp_writer& operator<< (const wtf_buffer &data)
+    {
+        write(data);
+        return *this;
+    }
 
     template <typename T>
     mp_writer& operator<< (const std::optional<T> &val) noexcept
