@@ -1,6 +1,7 @@
 #include "base64.h"
 #include "msgpuck/msgpuck.h"
 #include "mp_writer.h"
+#include "mp_reader.h"
 #include "connection.h"
 #include "proto.h"
 
@@ -155,6 +156,19 @@ mp_writer& mp_writer::operator<<(const mp_writer &data)
 {
     // make sure the destination has free space
     copy(data._buf.data(), data._buf.end, _buf.end);
+    _buf.resize(_buf.size() + data._buf.size());
+
+    if (!_opened_containers.empty())
+    {
+        size_t cardinality = 0;
+        mp_reader mp(data._buf);
+        while (mp.has_next())
+        {
+            mp.skip();
+            ++cardinality;
+        }
+        _opened_containers.top().items_count += cardinality;
+    }
     return *this;
 }
 
