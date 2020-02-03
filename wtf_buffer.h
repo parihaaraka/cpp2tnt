@@ -8,7 +8,7 @@
 class wtf_buffer
 {
 public:
-    wtf_buffer(size_t size = 1024 * 1024);
+    explicit wtf_buffer(size_t size = 1024 * 1024);
     size_t capacity() const noexcept;
     size_t size() const noexcept;
     size_t available() const noexcept;
