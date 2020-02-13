@@ -18,15 +18,24 @@
 std::function<void(tnt::connection*)> tnt::connection::_on_construct_global_cb;
 std::function<void(tnt::connection*)> tnt::connection::_on_destruct_global_cb;
 
+// because of different extract_error() signatures:
+inline char* extract_error(int result, char* buf, int err)
+{
+    if (result)
+        sprintf(buf, "unknown error: %d", err);
+    return buf;
+}
+
+// because of different extract_error() signatures:
+inline char* extract_error(char* result, char*, int)
+{
+    return result;
+}
+
 static std::string errno2str()
 {
-    char buf[128];
-#if (_POSIX_C_SOURCE >= 200112L || _XOPEN_SOURCE >= 600) && ! _GNU_SOURCE
-    strerror_r(errno, buf, sizeof(buf));
-    return buf;
-#else
-    return strerror_r(errno, buf, sizeof(buf));
-#endif
+    char buf[256];
+    return extract_error(strerror_r(errno, buf, sizeof(buf)), buf, errno);
 }
 
 namespace tnt

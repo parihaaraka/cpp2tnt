@@ -39,8 +39,8 @@ cs_parts parse_cs(string_view connection_string) noexcept
         // ensure the chunk contains valid port number
 #if __has_include(<charconv>)
         uint16_t tmp_port;
-        if (auto [ptr, err] = from_chars(chunk.data(), chunk.data() + chunk.size(), &tmp_port);
-                ptr == chunk.back() && tmp_port && tmp_port <= 0xffff)
+        if (auto [ptr, err] = from_chars(chunk.data(), chunk.data() + chunk.size(), tmp_port);
+                err == std::errc() && ptr - chunk.data() == chunk.size())
             res.port = chunk;
 #else
         // to guarantee terminating null character
