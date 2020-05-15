@@ -20,6 +20,8 @@ public:
     ev4cpp2tnt& operator= (ev4cpp2tnt &&src) = default;
 
     void take_care(tnt::connection *cn);
+
+    // Caution! Always destroy connections first - before ev4cpp2tnt.
     void enable_globally();
     void disable_globally();
 

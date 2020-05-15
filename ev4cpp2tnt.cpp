@@ -100,7 +100,11 @@ ev4cpp2tnt::ev4cpp2tnt(struct ev_loop *loop)
 ev4cpp2tnt::~ev4cpp2tnt()
 {
     while (!_ev_data->per_connection_watchers.empty())
-        unregister_connection(_ev_data->per_connection_watchers.begin()->first);
+    {
+        auto cn = _ev_data->per_connection_watchers.begin()->first;
+        cn->on_destruct({});
+        unregister_connection(cn);
+    }
     ev_timer_stop(_ev_data->loop, &_ev_data->timer);
 }
 
