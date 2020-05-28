@@ -44,7 +44,7 @@ namespace tnt
 using namespace std;
 
 connection::connection(std::string_view connection_string)
-    : _current_cs(connection_string), _delay(GENERAL_TIMEOUT)
+    : _current_cs(connection_string), _autoreconnect_timeout(GENERAL_TIMEOUT)
 {
     _next_to_send = _send_buffer.data();
     _receive_buffer.on_clear = [this]() noexcept {
@@ -116,7 +116,7 @@ void connection::process_receive_buffer()
                 {
                     _receive_buffer.clear();
                     _state = state::connected;
-                    _idle_seconds_counter = -1;
+                    _autoreconnect_ticks_counter = -1;
                     if (_connected_cb)
                     {
                         try
@@ -145,7 +145,7 @@ void connection::process_receive_buffer()
 
             _receive_buffer.clear();
             close(false);
-            _idle_seconds_counter = 0; // reconnect soon
+            _autoreconnect_ticks_counter = 0; // reconnect soon
         }
         else if (_caller_idle)
         {
@@ -261,7 +261,7 @@ void connection::address_resolved(const addrinfo *addr_info)
         {
             _socket = move(s);
             watch_socket(socket_state::write);
-            _idle_seconds_counter = 0;
+            _autoreconnect_ticks_counter = 0;
             return;
         }
 
@@ -271,7 +271,7 @@ void connection::address_resolved(const addrinfo *addr_info)
     }
 
     _state = state::disconnected;
-    _idle_seconds_counter = 0; // reconnect soon
+    _autoreconnect_ticks_counter = 0; // reconnect soon
 }
 
 void connection::open(int delay)
@@ -287,8 +287,8 @@ void connection::open(int delay)
 
     if (delay > 0)
     {
-        _idle_seconds_counter = 0;
-        _delay = delay;
+        _autoreconnect_ticks_counter = 0;
+        _autoreconnect_timeout = delay;
         return;
     }
 
@@ -298,8 +298,8 @@ void connection::open(int delay)
         return;
     }
 
-    _delay = GENERAL_TIMEOUT; // reset _delay which could be changed
-    _idle_seconds_counter = -1;
+    _autoreconnect_timeout = GENERAL_TIMEOUT; // reset _delay which could be changed
+    _autoreconnect_ticks_counter = -1;
     _cs_parts = parse_cs(_current_cs);
     if (!_cs_parts.host.empty())
     {
@@ -314,12 +314,7 @@ void connection::open(int delay)
             addrinfo *addr_info = nullptr;
             addrinfo hints{0, 0, SOCK_STREAM, IPPROTO_TCP, 0, nullptr, nullptr, nullptr};
 
-            int res;
-            do
-            {
-                res = getaddrinfo(_cs_parts.host.c_str(), _cs_parts.port.c_str(), &hints, &addr_info);
-            }
-            while (res == EAI_AGAIN);
+            int res = getaddrinfo(_cs_parts.host.c_str(), _cs_parts.port.c_str(), &hints, &addr_info);
             unique_ptr<addrinfo, void(*)(addrinfo*)> ai{addr_info, freeaddrinfo};
 
             if (!res && ai)
@@ -345,7 +340,7 @@ void connection::open(int delay)
                     _state = state::disconnected;
                     handle_error(message, error::getaddr);
                     // retry because we may fix dns
-                    _idle_seconds_counter = 0;
+                    _autoreconnect_ticks_counter = 0;
                 });
             }
             // ask to notify this engine within its thread
@@ -380,13 +375,13 @@ void connection::open(int delay)
         {
             _socket = move(s);
             watch_socket(socket_state::write);
-            _idle_seconds_counter = 0;
+            _autoreconnect_ticks_counter = 0;
             return;
         }
 
         handle_error();
         close(false);
-        _idle_seconds_counter = 0; // reconnect soon
+        _autoreconnect_ticks_counter = 0; // reconnect soon
     }
     else
     {
@@ -400,14 +395,15 @@ void connection::close(bool call_disconnect_handler, int autoreconnect_delay) no
     _greeting.clear();
     _state = state::disconnected;
     _request_id = 0;
+    _idle_ticks_counter = 0;
     if (autoreconnect_delay > 0)
     {
-        _idle_seconds_counter = autoreconnect_delay;
-        _delay = autoreconnect_delay;
+        _autoreconnect_ticks_counter = autoreconnect_delay;
+        _autoreconnect_timeout = autoreconnect_delay;
     }
     else
     {
-        _idle_seconds_counter = -1;
+        _autoreconnect_ticks_counter = -1;
     }
     if (!_socket)
         return;
@@ -539,7 +535,7 @@ void connection::input_processed()
 
 void connection::tick_1sec() noexcept
 {
-    if (_idle_seconds_counter >= 0 && ++_idle_seconds_counter >= _delay)
+    if (_autoreconnect_ticks_counter >= 0 && ++_autoreconnect_ticks_counter >= _autoreconnect_timeout)
     {
         if (_state == state::disconnected) // waiting for reconnect
         {
@@ -549,20 +545,30 @@ void connection::tick_1sec() noexcept
         {
             close();
             handle_error("timeout expired", error::timeout);
-            _idle_seconds_counter = 0; // reconnect soon
+            _autoreconnect_ticks_counter = 0; // reconnect soon
         }
     }
 
     // TMP
-    else if (is_opened() && _uncorked_size && std::time(nullptr) - _last_write_time > 10)
+    else if (is_opened())
     {
-        size_t bytes_to_send = static_cast<size_t>(_send_buffer.end - _next_to_send);
-        handle_error("~~~~~ uncorked data is stuck! ~~~~~"
-                     "\ncurrent socket watch mode: " +
-                     std::to_string(_prev_watch_mode) +
-                     "\nbytes_to_send: " + std::to_string(bytes_to_send) +
-                     "\nuncorked_size: " + std::to_string(_uncorked_size));
-        flush();
+        if (_uncorked_size && std::time(nullptr) - _last_write_time > 10)
+        {
+            size_t bytes_to_send = static_cast<size_t>(_send_buffer.end - _next_to_send);
+            handle_error("~~~~~ uncorked data is stuck! ~~~~~"
+                         "\ncurrent socket watch mode: " +
+                         std::to_string(_prev_watch_mode) +
+                         "\nbytes_to_send: " + std::to_string(bytes_to_send) +
+                         "\nuncorked_size: " + std::to_string(_uncorked_size));
+            flush();
+        }
+
+        // perhaps we should skip idle handler call in case of the problem above(?)
+        if (++_idle_ticks_counter >= _idle_timeout && _idle_cb)
+        {
+            _idle_cb();
+            _idle_ticks_counter = 0;
+        }
     }
 }
 
@@ -589,6 +595,13 @@ connection& connection::on_closed(decltype(_disconnected_cb) &&handler)
     return *this;
 }
 
+connection &connection::on_idle(int timeout_sec, decltype(_idle_cb) &&handler)
+{
+    _idle_timeout = timeout_sec;
+    _idle_cb = move(handler);
+    return *this;
+}
+
 connection& connection::on_error(decltype(_error_cb) &&handler)
 {
     _error_cb = move(handler);
@@ -607,6 +620,7 @@ void connection::read()
     if (!_socket)
         return;
 
+    _idle_ticks_counter = 0;
     do
     {
         auto buf_capacity = _receive_buffer.capacity();
@@ -630,7 +644,7 @@ void connection::read()
                 handle_error();
 
             close();
-            _idle_seconds_counter = 0; // reconnect soon
+            _autoreconnect_ticks_counter = 0; // reconnect soon
             return;
         }
         _receive_buffer.end += r;
@@ -668,7 +682,7 @@ void connection::read()
         {
             // no need to authenticate
             _state = state::connected;
-            _idle_seconds_counter = -1;
+            _autoreconnect_ticks_counter = -1;
             if (_connected_cb)
             {
                 try
@@ -701,13 +715,14 @@ void connection::write() noexcept
                 errno = opt;
             handle_error();
             close(false);
-            _idle_seconds_counter = 0; // reconnect soon
+            _autoreconnect_ticks_counter = 0; // reconnect soon
             return;
         }
         watch_socket(socket_state::read);
         return;
     }
 
+    _idle_ticks_counter = 0;
     assert(_send_buffer.end >= _next_to_send);
     size_t bytes_to_send = static_cast<size_t>(_send_buffer.end - _next_to_send);
 
@@ -735,7 +750,7 @@ void connection::write() noexcept
                 continue;
             handle_error();
             close();
-            _idle_seconds_counter = 0; // reconnect soon
+            _autoreconnect_ticks_counter = 0; // reconnect soon
             return;
         }
         _last_write_time = std::time(nullptr);

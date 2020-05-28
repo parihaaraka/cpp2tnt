@@ -48,8 +48,12 @@ private:
      *  (to change current db user while stay connected) */
     std::string _greeting;
     cs_parts _cs_parts;
-    int _idle_seconds_counter = -1;     ///< timeout counter
-    int _delay;
+
+    int _autoreconnect_ticks_counter = -1;     ///< ticks counter during connection (sec)
+    int _autoreconnect_timeout;                ///< ticks limit to reconnect (sec)
+
+    int _idle_ticks_counter = -1;
+    int _idle_timeout = -1;                    ///< idle duration before idle handler call (sec)
 
     /** The connection must be notified when _input_buffer was processed
      *  by caller completely. An external worker must not use _input_buffer
@@ -106,6 +110,7 @@ private:
     fu2::unique_function<void(wtf_buffer &buf)> _response_cb;
     fu2::unique_function<void()> _connected_cb;
     fu2::unique_function<void()> _disconnected_cb;
+    fu2::unique_function<void()> _idle_cb;
 
     static std::function<void(connection*)> _on_construct_global_cb;
     static std::function<void(connection*)> _on_destruct_global_cb;
@@ -166,6 +171,10 @@ public:
 
     /** Set disconnection handler. */
     connection& on_closed(decltype(_disconnected_cb) &&handler);
+
+    /** Set disconnection handler. */
+    connection& on_idle(int timeout_sec = -1, decltype(_idle_cb) &&handler = {});
+
 
     /** Set error handler. */
     connection& on_error(decltype(_error_cb) &&handler);
