@@ -398,7 +398,7 @@ void connection::close(bool call_disconnect_handler, int autoreconnect_delay) no
     _idle_ticks_counter = 0;
     if (autoreconnect_delay > 0)
     {
-        _autoreconnect_ticks_counter = autoreconnect_delay;
+        _autoreconnect_ticks_counter = 0;
         _autoreconnect_timeout = autoreconnect_delay;
     }
     else
