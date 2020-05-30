@@ -96,7 +96,7 @@ void mp_writer::finalize()
             throw runtime_error("odd number of map items");
 
         actual_cardinality = c.items_count / 2; // map cardinality
-        if (actual_cardinality == c.max_cardinality)
+        if (actual_cardinality * 2  == c.max_cardinality)
             return;
 
         // get current header size
@@ -128,6 +128,7 @@ void mp_writer::finalize()
     default:
         throw runtime_error("previously not implemented container cardinality");
     }
+
 }
 
 void mp_writer::write(const char *begin, const char *end, size_t cardinality)

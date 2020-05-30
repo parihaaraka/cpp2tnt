@@ -4,6 +4,7 @@
 #include <string_view>
 #include <array>
 #include <map>
+#include <tuple>
 #include "msgpuck/msgpuck.h"
 #include "wtf_buffer.h"
 
@@ -64,7 +65,27 @@ public:
         *this << val.value();
         return *this;
     }
+/*
+    template <typename T>
+    mp_writer& operator<< (const std::vector<T> &val) noexcept
+    {
+        begin_array(val.size());
+        for( auto& it : val )
+            *this<<it;
+        finalize();
+        return *this;
+    }
 
+    template <typename K,typename V>
+    mp_writer& operator<< (const std::map<K,V>& val) noexcept
+    {
+        begin_map(val.size());
+        for( auto& it : val )
+            *this << it.first << it.second;
+        finalize();
+        return *this;
+    }
+*/
     template <typename T, typename = std::enable_if_t<std::is_integral_v<T> && sizeof(T) < 16>>
     mp_writer& operator<< (const T &val) noexcept
     {
@@ -83,6 +104,46 @@ public:
             ++_opened_containers.top().items_count;
         return *this;
     }
+
+    /*
+    template<class Tuple, size_t N>
+    class TupleWriter
+    {
+    public:
+        static void out_tuple(mp_writer *stream, const Tuple &tuple)
+        {
+              TupleWriter<Tuple, N - 1>::out_tuple(stream, tuple);
+              *stream << std::get<N - 1>(tuple);
+        }
+    };
+
+    template<class Tuple>
+    class TupleWriter<Tuple, 1>
+    {
+    public:
+        static void out_tuple(mp_writer *stream, const Tuple &tuple)
+        {
+            *stream << std::get<0>(tuple);
+        }
+    };
+
+    template<class Tuple>
+    class TupleWriter<Tuple, 0>
+    {
+     public:
+         static void out_tuple(mp_writer *stream, const Tuple &tuple)
+        {}
+     };
+
+    template<typename... Args>
+    mp_writer& operator<<(const std::tuple<Args...> &value)
+    {
+        begin_array(std::tuple_size<std::tuple<Args...>>::value);
+        TupleWriter<std::tuple<Args...>, sizeof...(Args)>::out_tuple(this, value);
+        finalize();
+        return *this;
+    }
+    */
 
     template<typename... Args>
     mp_writer& operator<< (const std::tuple<Args...> &val)

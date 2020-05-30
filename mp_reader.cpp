@@ -294,3 +294,34 @@ mp_array_reader::mp_array_reader(const char *begin, const char *end)
 {
     mp_reader::operator>>(*this);
 }
+
+const char* to_string(mp_type type)
+{
+    switch (type)
+    {
+    case MP_NIL:
+        return "nil";
+    case MP_UINT:
+        return "uint";
+    case MP_INT:
+        return "int";
+    case MP_STR:
+        return "string";
+    case MP_BIN:
+        return "binary";
+    case MP_ARRAY:
+        return "array";
+    case MP_MAP:
+        return "map";
+    case MP_BOOL:
+        return "bool";
+    case MP_FLOAT:
+        return "float";
+    case MP_DOUBLE:
+        return "double";
+    case MP_EXT:
+        return "ext";
+    default:
+        return "unkown";
+    }
+}

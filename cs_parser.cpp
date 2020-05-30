@@ -37,12 +37,14 @@ cs_parts parse_cs(string_view connection_string) noexcept
             return false;
 
         // ensure the chunk contains valid port number
-#if __has_include(<charconv>)
+/*
+ * #if __has_include(<charconv>)
         uint16_t tmp_port;
         if (auto [ptr, err] = from_chars(chunk.data(), chunk.data() + chunk.size(), tmp_port);
                 err == std::errc() && ptr - chunk.data() == chunk.size())
             res.port = chunk;
 #else
+*/
         // to guarantee terminating null character
         char tmp_chunk[6] = {0};
         copy(chunk.begin(), chunk.end(), begin(tmp_chunk));
@@ -50,7 +52,7 @@ cs_parts parse_cs(string_view connection_string) noexcept
         auto tmp_port = strtoul(tmp_chunk, &parse_end, 10);
         if (!*parse_end && tmp_port && tmp_port <= 0xffff)
             res.port = chunk;
-#endif
+//#endif
 
         return !res.port.empty();
     };
