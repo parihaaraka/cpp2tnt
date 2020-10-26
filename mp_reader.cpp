@@ -1,6 +1,8 @@
 #include "mp_reader.h"
 #include "wtf_buffer.h"
 #include "proto.h"
+#include "msgpuck/ext_tnt.h"
+#include "msgpuck/msgpuck.h"
 
 using namespace std;
 
@@ -77,6 +79,9 @@ mp_reader::mp_reader(const char *begin, const char *end)
 {
     _current_pos = _begin = begin;
     _end = end;
+    // TODO сделать попрямее
+    mp_snprint_ext = mp_snprint_ext_tnt;
+    mp_fprint_ext = mp_fprint_ext_tnt;
 }
 
 void mp_reader::skip(const char **pos) const
@@ -210,11 +215,11 @@ mp_reader &mp_reader::operator>>(string &val)
         skip();
 
         val.resize(64, '\0');
-        size_t len = mp_snprint_ext(val.data(), val.size(), data);
+        size_t len = mp_snprint(val.data(), val.size(), data);
         if (len > val.size())
         {
             val.resize(len, '\0');
-            mp_snprint_ext(val.data(), len, data);
+            mp_snprint(val.data(), len, data);
         }
         val.resize(len);
     }
