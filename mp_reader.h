@@ -8,6 +8,7 @@
 #include <map>
 #include <memory>
 #include <functional>
+#include <cmath>
 #include "msgpuck/msgpuck.h"
 
 #if defined _WIN32 || defined __CYGWIN__
@@ -180,7 +181,10 @@ public:
     }
 
     // use external operator overload for 128 bit integers
-    template <typename T, typename = std::enable_if_t<std::is_integral_v<T> && sizeof(T) < 16>>
+    template <typename T, typename = std::enable_if_t<
+                  (std::is_integral_v<T> && sizeof(T) < 16) ||
+                   std::is_floating_point_v<T>
+                   >>
     mp_reader& operator>> (T &val)
     {
         const char *data = _current_pos;
@@ -196,6 +200,26 @@ public:
                 return *this;
             }
             throw mp_reader_error("boolean expected, got " + mpuck_type_name(type), *this, prev_pos);
+        }
+        else if constexpr (std::is_floating_point_v<T>)
+        {
+            if (type == MP_FLOAT)
+            {
+                val = mp_decode_float(&data);
+                return *this;
+            }
+            else if (type == MP_DOUBLE)
+            {
+                double res = mp_decode_double(&data);
+                if constexpr (std::is_same_v<T, float>)
+                {
+                    if (res > std::numeric_limits<T>::max() || res < std::numeric_limits<T>::min())
+                        throw mp_reader_error("value overflow", *this);
+                }
+                val = static_cast<T>(res);
+                return *this;
+            }
+            throw mp_reader_error("float expected, got " + mpuck_type_name(type), *this, prev_pos);
         }
         else
         {
@@ -284,8 +308,9 @@ public:
 
         auto type = mp_typeof(*_current_pos);
         if constexpr (std::is_same_v<T, bool>)
+        {
             return type == MP_BOOL && val == tmp.read<T>();
-
+        }
         else if constexpr (std::is_enum_v<T> || (std::is_integral_v<T> && sizeof(T) < 16))
         {
             if (type == MP_UINT && val >= 0)
@@ -301,6 +326,15 @@ public:
                 if (res >= 0 && val >= 0)
                     return static_cast<uint64_t>(res) == static_cast<uint64_t>(val);
             }
+        }
+        else if constexpr (std::is_floating_point_v<T>)
+        {
+            //if (isnan(val))
+            //    return type == MP_NIL;
+            if (type == MP_FLOAT)
+                return val == mp_decode_float(&begin);
+            if (type == MP_DOUBLE)
+                return val == mp_decode_double(&begin);
         }
         else if constexpr (std::is_same_v<T, std::string_view>)
         {
@@ -323,7 +357,7 @@ public:
         }
         else
         {
-            throw mp_reader_error("unsupported key type to find within map", *this);
+            throw mp_reader_error("unsupported value type to compare with", *this);
         }
 
         return false;

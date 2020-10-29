@@ -84,7 +84,7 @@ int main(int argc, char *argv[])
 
         cout << "connected" << endl;
         iproto_writer w(cn);
-        w.eval("return 1,2,{3,4},{8,9,10},{a=5,b=6},7,require('decimal').new(100),{11,12,13}");
+        w.eval("return 1,2,{3,4},{8,9,10},{a=5,b=6},7.123,require('decimal').new(100),{11,12,13}");
         handlers[cn.last_request_id()] = [&throw_if_error, loop](const mp_map_reader &header, const mp_map_reader &body)
         {
             throw_if_error(header, body);
@@ -94,29 +94,34 @@ int main(int argc, char *argv[])
                  << hex_dump(ret_data.begin(), ret_data.end()) << endl;
             auto ret_items = ret_data.read<mp_array_reader>();
 
-            vector<int> vec;
-            mp_array_reader tmp = ret_items.as_array(3);
+            mp_array_reader tmp = ret_items.as_array(3); // fourth item (array {8,9,10})
             cout << endl;
             while (tmp.has_next())
                 cout << tmp.to_string() << ',';
             cout << endl;
 
-            tmp = ret_items.as_array(4);
+            tmp = ret_items.as_array(4); // map {a=5,b=6}
             while (tmp.has_next())
                 cout << tmp.to_string() << ',';
             cout << endl;
 
             __int128_t a;
-            long b, e, h;
-            map<string, int> d;
+            long b;
             tuple<long, long, optional<long>> c;
-            optional<long> f, g;
+            vector<int> d;
+            map<string, int> e;
+            double f;
+            optional<long> g, h;
+            long i;
             optional<string> dec;
             optional<vector<int>> tail;
 
+            // preserve original state
             auto ret_items_bak = ret_items;
-            ret_items >> a >> b >> c >> vec >> d >> e;
+            // read 6 items and move current position
+            ret_items >> a >> b >> c >> d >> e >> f;
 
+            // shallow copy of reader acquires the position too
             auto ti2 = ret_items;
             auto s1 = ret_items.to_string();
             string s2;
@@ -127,20 +132,24 @@ int main(int argc, char *argv[])
                  << s2 << endl
                  << "------------" << endl;
 
-            ret_items >> tail >> f >> g;
-            h = ret_items.read_or(-1);
+            // read the rest
+            ret_items >> tail >> g >> h;
+            // read if exists
+            i = ret_items.read_or(-1);
             cout << endl << b << endl
-                 << vector2str(vec) << endl
+                 << vector2str(d) << endl
                  << get<0>(c) << ',' << get<1>(c) << ',' << get<2>(c).value_or(0) << endl;
-            for (auto &[k,v]: d)
+            for (auto &[k,v]: e)
                 cout << k << ": " << v << endl;
-            cout << e << endl
+            cout << f << endl
                  << dec.value_or("") << endl
                  << vector2str(tail.value_or(vector<int>{})) << endl
-                 << f.value_or(0) << endl
-                 << g.value_or(0) << endl;
-            ret_items_bak >> mp_reader::none() >> mp_reader::none<4>() >> b;
-            cout << endl << "sixth value: " << b << endl;
+                 << g.value_or(0) << endl
+                 << h.value_or(0) << endl;
+
+            // skip 5 items and read the 6'th one
+            ret_items_bak >> mp_reader::none() >> mp_reader::none<4>() >> f;
+            cout << endl << "sixth value: " << f << endl;
             ev_break(loop);
         };
         w.encode_ping_request();

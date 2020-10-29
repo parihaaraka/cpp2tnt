@@ -65,12 +65,24 @@ public:
         return *this;
     }
 
-    template <typename T, typename = std::enable_if_t<std::is_integral_v<T> && sizeof(T) < 16>>
+    template <typename T, typename = std::enable_if_t<
+                  (std::is_integral_v<T> && sizeof(T) < 16) ||
+                   std::is_floating_point_v<T>
+                   >>
     mp_writer& operator<< (const T &val) noexcept
     {
         if constexpr (std::is_same_v<T, bool>)
         {
             _buf.end = mp_encode_bool(_buf.end, val);
+        }
+        else if constexpr (std::is_floating_point_v<T>)
+        {
+            if constexpr (sizeof(T) <= 4)
+                _buf.end = mp_encode_float(_buf.end, val);
+            else if (val <= std::numeric_limits<double>::max() && val >= std::numeric_limits<double>::min())
+                _buf.end = mp_encode_double(_buf.end, static_cast<double>(val));
+            else
+                throw std::overflow_error("unable to fit floating point value into msgpack");
         }
         else
         {
