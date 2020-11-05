@@ -559,7 +559,7 @@ void connection::tick_1sec() noexcept
                          "\ncurrent socket watch mode: " +
                          std::to_string(_prev_watch_mode) +
                          "\nbytes_to_send: " + std::to_string(bytes_to_send) +
-                         "\nuncorked_size: " + std::to_string(_uncorked_size));
+                         "\nuncorked_size: " + std::to_string(_uncorked_size), error::uncorked_data_jam);
             flush();
         }
 

@@ -27,7 +27,8 @@ enum class error {
     auth,                 ///< authentication error
     closed_by_peer,       ///< connection closed by peer
     unexpected_data,      ///< messagepack parse error and so on
-    external              ///< caller error (exception within callback)
+    external,             ///< caller error (exception within callback)
+    uncorked_data_jam     ///< uncorked data is stuck
 };
 
 /// Socket state to poll for.
