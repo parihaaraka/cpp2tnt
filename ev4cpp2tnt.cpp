@@ -87,6 +87,8 @@ void unregister_connection(ev4cpp2tnt::ev_data *data, tnt::connection *cn)
 
 ev4cpp2tnt::ev4cpp2tnt(struct ev_loop *loop)
 {
+    if (!loop)
+        return;
     _ev_data = make_unique<ev_data>();
     _ev_data->loop = loop;
 
@@ -99,6 +101,8 @@ ev4cpp2tnt::ev4cpp2tnt(struct ev_loop *loop)
 
 ev4cpp2tnt::~ev4cpp2tnt()
 {
+    if (!_ev_data)
+        return;
     while (!_ev_data->per_connection_watchers.empty())
     {
         auto cn = _ev_data->per_connection_watchers.begin()->first;

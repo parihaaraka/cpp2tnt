@@ -14,7 +14,7 @@ class connection;
 class ev4cpp2tnt
 {
 public:
-    ev4cpp2tnt(struct ev_loop *loop = EV_DEFAULT);
+    ev4cpp2tnt(struct ev_loop *loop = nullptr);
     ~ev4cpp2tnt();
     ev4cpp2tnt(ev4cpp2tnt &&src) = default;
     ev4cpp2tnt& operator= (ev4cpp2tnt &&src) = default;
