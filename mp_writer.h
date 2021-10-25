@@ -4,6 +4,7 @@
 #include <string_view>
 #include <array>
 #include <map>
+#include <cmath>
 #include "msgpuck/msgpuck.h"
 #include "wtf_buffer.h"
 
@@ -79,7 +80,7 @@ public:
         {
             if constexpr (sizeof(T) <= 4)
                 _buf.end = mp_encode_float(_buf.end, val);
-            else if (val <= std::numeric_limits<double>::max() && val >= std::numeric_limits<double>::min())
+            else if (!std::isfinite(val) || (val <= std::numeric_limits<double>::max() && val >= std::numeric_limits<double>::min()))
                 _buf.end = mp_encode_double(_buf.end, static_cast<double>(val));
             else
                 throw std::overflow_error("unable to fit floating point value into msgpack");

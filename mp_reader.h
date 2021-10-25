@@ -213,7 +213,7 @@ public:
                 double res = mp_decode_double(&data);
                 if constexpr (std::is_same_v<T, float>)
                 {
-                    if (res > std::numeric_limits<T>::max() || res < std::numeric_limits<T>::min())
+                    if (std::isfinite(res) && (res > std::numeric_limits<T>::max() || res < std::numeric_limits<T>::min()))
                         throw mp_reader_error("value overflow", *this);
                 }
                 val = static_cast<T>(res);
