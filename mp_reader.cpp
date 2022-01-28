@@ -6,6 +6,15 @@
 
 using namespace std;
 
+struct mp_ext_initializer
+{
+    mp_ext_initializer()
+    {
+        mp_snprint_ext = mp_snprint_ext_tnt;
+        mp_fprint_ext = mp_fprint_ext_tnt;
+    }
+};
+
 std::string hex_dump(const char *begin, const char *end, const char *pos)
 {
     std::string res;
@@ -75,13 +84,16 @@ mp_reader::mp_reader(const wtf_buffer &buf) : mp_reader(buf.data(), buf.end)
 {
 }
 
+mp_reader::mp_reader(const std::vector<char> &buf) : mp_reader(buf.data(), buf.data() + buf.size())
+{
+
+}
+
 mp_reader::mp_reader(const char *begin, const char *end)
 {
     _current_pos = _begin = begin;
     _end = end;
-    // TODO сделать попрямее
-    mp_snprint_ext = mp_snprint_ext_tnt;
-    mp_fprint_ext = mp_fprint_ext_tnt;
+    static mp_ext_initializer i;
 }
 
 void mp_reader::skip(const char **pos) const

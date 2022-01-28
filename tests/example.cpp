@@ -83,7 +83,7 @@ int main(int argc, char *argv[])
         };
 
         cout << "connected" << endl;
-        iproto_writer w(cn);
+        iproto_client w(cn);
         w.eval("return 1,2,{3,4},{8,9,10},{a=5,b=6},7.123,require('decimal').new(100),{11,12,13}");
         handlers[cn.last_request_id()] = [&throw_if_error, loop](const mp_map_reader &header, const mp_map_reader &body)
         {

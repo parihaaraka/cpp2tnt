@@ -9,6 +9,7 @@ class wtf_buffer
 {
 public:
     explicit wtf_buffer(size_t size = 1024 * 1024);
+    wtf_buffer(std::vector<char> buf);
     size_t capacity() const noexcept;
     size_t size() const noexcept;
     size_t available() const noexcept;
@@ -18,7 +19,9 @@ public:
     void resize(size_t size);
     void clear() noexcept;
     void swap(wtf_buffer &other) noexcept;
+
     char *end; // let msgpuck to write directly
+
     std::function<void()> on_clear;
     wtf_buffer(wtf_buffer &&);
     wtf_buffer& operator= (wtf_buffer &&);

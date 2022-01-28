@@ -670,7 +670,7 @@ void connection::read()
             _send_buffer.clear();
             _next_to_send = _send_buffer.data();
 
-			iproto_client dst(*this, _send_buffer); // skip _output buffer
+            iproto_client dst(*this, _send_buffer); // skip _output buffer
             dst.encode_auth_request();
             write();
 

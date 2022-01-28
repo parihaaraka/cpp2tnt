@@ -60,6 +60,7 @@ class mp_reader
 {
 public:
     mp_reader(const wtf_buffer &buf);
+    mp_reader(const std::vector<char> &buf);
     mp_reader(const char *begin = nullptr, const char *end = nullptr);
 
     template <std::size_t N = 1>
