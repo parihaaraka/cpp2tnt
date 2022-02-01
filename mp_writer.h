@@ -2,6 +2,8 @@
 #define MP_WRITER_H
 
 #include <string_view>
+#include <stdexcept>
+#include <optional>
 #include <array>
 #include <map>
 #include <cmath>
