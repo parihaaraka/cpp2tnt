@@ -491,7 +491,13 @@ bool connection::is_opened() const noexcept
 
 bool connection::is_closed() const noexcept
 {
-    return _state == state::disconnected;
+	return _state == state::disconnected;
+}
+
+size_t connection::bytes_to_send() const noexcept
+{
+	size_t bytes_to_send = static_cast<size_t>(_send_buffer.end - _next_to_send);
+	return bytes_to_send + _uncorked_size;
 }
 
 void connection::cork() noexcept

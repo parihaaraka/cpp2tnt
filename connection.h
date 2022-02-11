@@ -137,11 +137,18 @@ public:
     const cs_parts& connection_string_parts() const noexcept;
     bool is_opened() const noexcept;
     bool is_closed() const noexcept;
+	size_t bytes_to_send() const noexcept;
 
+
+	// --- Draft useless api. Due to manual writing to output buffer
+	//     you need just call flush() to uncork.
     /** Prevent further requests from being sent immediately upon creation. */
     void cork() noexcept;
     /** flush() + allow to send further requests right away (if possible). */
     void uncork() noexcept;
+	// ---
+
+
     /**
      * Move accumulated requests to send buffer if possible.
      *
@@ -173,7 +180,7 @@ public:
     /** Set disconnection handler. */
     connection& on_closed(decltype(_disconnected_cb) &&handler);
 
-    /** Set disconnection handler. */
+	/** Set idle handler (no reads and writes during timeout_sec). */
     connection& on_idle(int timeout_sec = -1, decltype(_idle_cb) &&handler = {});
 
 
