@@ -41,6 +41,10 @@ public:
     /// Replace initial cardinality settled with begin_array(), begin_map() with actual
     /// value (counted untill now).
     void finalize();
+    /// Finalize all non-finalized containers (if exists).
+    void finalize_all();
+    /// Function to be used in custom serializers (e.g. operator << overload).
+    void increment_container_counter(size_t items_added = 1);
 
     /// Append msgpack buffer.
     void write(const char *begin, const char *end, size_t cardinality = 0);

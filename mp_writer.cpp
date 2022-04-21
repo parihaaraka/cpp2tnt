@@ -41,8 +41,7 @@ mp_writer::mp_writer(wtf_buffer &buf) : _buf(buf) {}
 
 void mp_writer::begin_array(uint32_t max_cardinality)
 {
-    if (!_opened_containers.empty())
-        ++_opened_containers.top().items_count;
+    increment_container_counter();
 
     _opened_containers.push({_buf.size(), max_cardinality});
     _buf.end = mp_encode_array(_buf.end, max_cardinality);
@@ -50,9 +49,7 @@ void mp_writer::begin_array(uint32_t max_cardinality)
 
 void mp_writer::begin_map(uint32_t max_cardinality)
 {
-    if (!_opened_containers.empty())
-        ++_opened_containers.top().items_count;
-
+    increment_container_counter();
     _opened_containers.push({_buf.size(), max_cardinality});
     _buf.end = mp_encode_map(_buf.end, max_cardinality);
 }
@@ -130,6 +127,18 @@ void mp_writer::finalize()
     }
 }
 
+void mp_writer::finalize_all()
+{
+    while (!_opened_containers.empty())
+        finalize();
+}
+
+void mp_writer::increment_container_counter(size_t items_added)
+{
+    if (!_opened_containers.empty())
+        _opened_containers.top().items_count += items_added;
+}
+
 void mp_writer::write(const char *begin, const char *end, size_t cardinality)
 {
     // make sure the destination has free space
@@ -154,8 +163,7 @@ void mp_writer::write(const char *begin, const char *end, size_t cardinality)
 mp_writer &mp_writer::operator<<(nullptr_t)
 {
     _buf.end = mp_encode_nil(_buf.end);
-    if (!_opened_containers.empty())
-        ++_opened_containers.top().items_count;
+    increment_container_counter();
     return *this;
 }
 
@@ -168,8 +176,7 @@ mp_writer& mp_writer::operator<<(const string_view &val)
     else
         _buf.end = mp_encode_str(_buf.end, val.data(), static_cast<uint32_t>(val.size()));
 
-    if (!_opened_containers.empty())
-        ++_opened_containers.top().items_count;
+    increment_container_counter();
     return *this;
 }
 
