@@ -5,6 +5,7 @@
 #include <array>
 #include <map>
 #include <tuple>
+#include <optional>
 #include "msgpuck/msgpuck.h"
 #include "wtf_buffer.h"
 
