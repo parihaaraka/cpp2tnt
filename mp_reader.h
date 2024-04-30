@@ -9,6 +9,7 @@
 #include <string>
 #include <memory>
 #include <functional>
+#include <limits>
 #include "msgpuck/msgpuck.h"
 
 class wtf_buffer;
