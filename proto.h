@@ -32,7 +32,7 @@
 
 /** @file */
 
-#include <cinttypes>
+#include <cstdint>
 
 /// Tarantool connector scope
 namespace tnt

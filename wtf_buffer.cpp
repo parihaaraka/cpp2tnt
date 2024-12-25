@@ -5,7 +5,7 @@ wtf_buffer::wtf_buffer(size_t size) : _buf(size)
     end = _buf.data();
 }
 
-wtf_buffer::wtf_buffer(std::vector<char> buf) : _buf(move(buf))
+wtf_buffer::wtf_buffer(std::vector<char> buf) : _buf(std::move(buf))
 {
     end = _buf.data();
 }
@@ -63,7 +63,7 @@ void wtf_buffer::swap(wtf_buffer &other) noexcept
     // DO NOT swap on_clear!
 }
 
-wtf_buffer::wtf_buffer(wtf_buffer &&src) : end(src.end), _buf(move(src._buf))
+wtf_buffer::wtf_buffer(wtf_buffer &&src) : end(src.end), _buf(std::move(src._buf))
 {
     // end stays valid
     //_buf.swap(src._buf);

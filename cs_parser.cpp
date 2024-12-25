@@ -1,4 +1,5 @@
 #include "cs_parser.h"
+#include <cstdint>
 #if __has_include(<charconv>)
 #include <charconv>
 #endif
@@ -40,7 +41,7 @@ cs_parts parse_cs(string_view connection_string) noexcept
 #if __has_include(<charconv>)
         uint16_t tmp_port;
         if (auto [ptr, err] = from_chars(chunk.data(), chunk.data() + chunk.size(), tmp_port);
-                err == std::errc() && ptr - chunk.data() == chunk.size())
+                err == std::errc() && static_cast<size_t>(ptr - chunk.data()) == chunk.size())
             res.port = chunk;
 #else
         // to guarantee terminating null character

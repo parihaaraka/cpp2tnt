@@ -252,14 +252,14 @@ void connection::address_resolved(const addrinfo *addr_info)
         _state = state::connecting;
         if (connect(s.handle(), addr->ai_addr, addr->ai_addrlen) != -1)
         {
-            _socket = move(s);
+            _socket = std::move(s);
             watch_socket(socket_state::read); //wait for greeting
             return;
         }
 
         if (errno == EINPROGRESS)
         {
-            _socket = move(s);
+            _socket = std::move(s);
             watch_socket(socket_state::write);
             _autoreconnect_ticks_counter = 0;
             return;
@@ -320,7 +320,7 @@ void connection::open(int delay)
             if (!res && ai)
             {
                 lock_guard<mutex> lk(_handlers_queue_guard);
-                _notification_handlers.push_back([ai = move(ai), this](){
+                _notification_handlers.push_back([ai = std::move(ai), this](){
                     if (_address_resolver.joinable())
                         _address_resolver.join();
                     address_resolved(ai.get());
@@ -366,14 +366,14 @@ void connection::open(int delay)
         _state = state::connecting;
         if (connect(s.handle(), reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) != -1)
         {
-            _socket = move(s);
+            _socket = std::move(s);
             watch_socket(socket_state::read); //wait for greeting
             return;
         }
 
         if (errno == EAGAIN)
         {
-            _socket = move(s);
+            _socket = std::move(s);
             watch_socket(socket_state::write);
             _autoreconnect_ticks_counter = 0;
             return;
@@ -447,7 +447,7 @@ void connection::set_connection_string(string_view connection_string)
 void connection::push_handler(fu2::unique_function<void()> &&handler)
 {
     unique_lock<mutex> lk(_handlers_queue_guard);
-    _notification_handlers.push_back(move(handler));
+    _notification_handlers.push_back(std::move(handler));
     lk.unlock();
 
     if (_on_notify_request)
@@ -591,32 +591,32 @@ void connection::acquire_notifications()
 
 connection& connection::on_opened(decltype(_connected_cb) &&handler)
 {
-    _connected_cb = move(handler);
+    _connected_cb = std::move(handler);
     return *this;
 }
 
 connection& connection::on_closed(decltype(_disconnected_cb) &&handler)
 {
-    _disconnected_cb = move(handler);
+    _disconnected_cb = std::move(handler);
     return *this;
 }
 
 connection &connection::on_idle(int timeout_sec, decltype(_idle_cb) &&handler)
 {
     _idle_timeout = timeout_sec;
-    _idle_cb = move(handler);
+    _idle_cb = std::move(handler);
     return *this;
 }
 
 connection& connection::on_error(decltype(_error_cb) &&handler)
 {
-    _error_cb = move(handler);
+    _error_cb = std::move(handler);
     return *this;
 }
 
 connection& connection::on_socket_watcher_request(decltype(_socket_watcher_request_cb) &&handler)
 {
-    _socket_watcher_request_cb = move(handler);
+    _socket_watcher_request_cb = std::move(handler);
     return *this;
 }
 
@@ -788,13 +788,13 @@ void connection::write() noexcept
 
 connection &connection::on_response(decltype(_response_cb) &&handler)
 {
-    _response_cb = move(handler);
+    _response_cb = std::move(handler);
     return *this;
 }
 
 connection& connection::on_notify_request(decltype(_on_notify_request) &&handler)
 {
-    _on_notify_request = move(handler);
+    _on_notify_request = std::move(handler);
     return *this;
 }
 
@@ -810,7 +810,7 @@ void connection::on_destruct_global(const std::function<void(connection*)> &hand
 
 void connection::on_destruct(fu2::unique_function<void()> &&handler)
 {
-    _on_destruct_cb = move(handler);
+    _on_destruct_cb = std::move(handler);
 }
 
 } // namespace tnt
