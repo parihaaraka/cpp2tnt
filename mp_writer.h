@@ -10,11 +10,6 @@
 #include "msgpuck/msgpuck.h"
 #include "wtf_buffer.h"
 
-namespace tnt {
-class connection;
-enum class request_type : uint8_t;
-}
-
 /** msgpuck wrapper.
  *
  * A caller must ensure there is enough free space in the buffer.
@@ -217,83 +212,6 @@ protected:
 
     wtf_stack<container_meta> _opened_containers;
     wtf_buffer &_buf;
-};
-
-
-/** Helper to compose iproto messages.
-*
-* A caller must ensure there is enough free space in the underlying buffer.
-*/
-class iproto_writer : public mp_writer
-{
-public:
-    /// Wrap writer object around specified buffer.
-    iproto_writer(wtf_buffer &buf);
-
-    /// Initiate request or response. A caller must compose header and body afterwards and call finalize()
-    /// to finalize the message.
-    void start_message();
-
-    /// Finalize topmost container or finalize a message (by fixing its final size).
-    void finalize();
-    /// Finalize all non-finalized containers, call, eval, etc (if exists).
-    void finalize_all();
-
-    using mp_writer::operator<<;
-};
-
-/** Helper to compose requests.
-*
-* A caller must ensure there is enough free space in the underlying buffer.
-*/
-class iproto_client : public iproto_writer
-{
-public:
-    /// Wrap writer object around cn.output_buffer().
-    iproto_client(tnt::connection &cn);
-    iproto_client(tnt::connection &cn, wtf_buffer &buf);
-
-    /// Initiate request of specified type. A caller must compose a body afterwards and call finalize()
-    /// to finalize request.
-    void encode_header(tnt::request_type req_type);
-    /// Put authentication request into the underlying buffer. User and password
-    /// from connection string are used.
-    void encode_auth_request();
-    /// Put authentication request into the underlying buffer.
-    void encode_auth_request(std::string_view user, std::string_view password);
-    /// Put ping request into the underlying buffer.
-    void encode_ping_request();
-
-    /// Initiate call request. A caller must pass an array of arguments afterwards
-    /// and call finalize() to finalize request.
-    void begin_call(std::string_view fn_name);
-
-    void begin_eval(std::string_view script);
-
-    /// Call request all-in-one wrapper.
-    template <typename ...Ts>
-    void call(std::string_view fn_name, Ts const&... args)
-    {
-        begin_call(fn_name);
-        begin_array(sizeof...(args));
-        ((*this << args), ...);
-        finalize_all();
-    }
-
-    /// Call request all-in-one wrapper.
-    template <typename ...Ts>
-    void eval(std::string_view script, Ts const&... args)
-    {
-        begin_eval(script);
-        begin_array(sizeof...(args));
-        ((*this << args), ...);
-        finalize_all();
-    }
-
-    using mp_writer::operator<<;
-
-private:
-    tnt::connection &_cn; ///< request id, initial user name and password source
 };
 
 #endif // MP_WRITER_H

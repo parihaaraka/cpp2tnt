@@ -3,10 +3,10 @@
 #include <netinet/tcp.h>
 #include <sys/socket.h>
 #include <sys/un.h>
+#include "iproto_writer.h"
 #include "msgpuck/msgpuck.h"
-#include "proto.h"
 #include "mp_reader.h"
-#include "mp_writer.h"
+#include "iproto.h"
 
 #ifndef MSG_NOSIGNAL
 #define MSG_NOSIGNAL 0
@@ -47,11 +47,6 @@ connection::connection(std::string_view connection_string)
     : _current_cs(connection_string), _autoreconnect_timeout(GENERAL_TIMEOUT)
 {
     _next_to_send = _send_buffer.data();
-    _receive_buffer.on_clear = [this]() noexcept {
-        _last_received_head_offset = 0;
-        _detected_response_size = 0;
-    };
-
     if (_on_construct_global_cb)
         _on_construct_global_cb(this);
 }
@@ -114,7 +109,7 @@ void connection::process_receive_buffer()
                 response.read<mp_map_reader>()[header_field::CODE] >> code;
                 if (!code)
                 {
-                    _receive_buffer.clear();
+                    clear_receive_buffer();
                     _state = state::connected;
                     _autoreconnect_ticks_counter = -1;
                     if (_connected_cb)
@@ -143,7 +138,7 @@ void connection::process_receive_buffer()
                 handle_error(e.what(), error::system);
             }
 
-            _receive_buffer.clear();
+            clear_receive_buffer();
             close(false);
             _autoreconnect_ticks_counter = 0; // reconnect soon
         }
@@ -154,6 +149,13 @@ void connection::process_receive_buffer()
     }
 }
 
+void connection::clear_receive_buffer()
+{
+    _receive_buffer.clear();
+    _last_received_head_offset = 0;
+    _detected_response_size = 0;
+}
+
 void connection::pass_response_to_caller()
 {
     if (!_last_received_head_offset)
@@ -161,7 +163,7 @@ void connection::pass_response_to_caller()
 
     size_t orphaned_bytes = _receive_buffer.size() - _last_received_head_offset;
     _input_buffer.clear();
-    _input_buffer.swap(_receive_buffer);
+    std::swap(_input_buffer, _receive_buffer);
     if (orphaned_bytes) // partial response
     {
         _receive_buffer.resize(orphaned_bytes);
@@ -195,7 +197,8 @@ void connection::pass_response_to_caller()
 void connection::watch_socket(socket_state mode) noexcept
 {
     _prev_watch_mode = mode;
-    _socket_watcher_request_cb(mode);
+    if (_socket_watcher_request_cb)
+        _socket_watcher_request_cb(mode);
 }
 
 connection::~connection()
@@ -444,6 +447,11 @@ void connection::set_connection_string(string_view connection_string)
     _current_cs = connection_string;
 }
 
+void connection::set_required_proto(proto_id proto)
+{
+    _required_proto = proto;
+}
+
 void connection::push_handler(fu2::unique_function<void()> &&handler)
 {
     unique_lock<mutex> lk(_handlers_queue_guard);
@@ -521,7 +529,7 @@ bool connection::flush() noexcept
     if (!bytes_not_sent)
     {
         _send_buffer.clear();
-        _send_buffer.swap(_output_buffer);
+        std::swap(_send_buffer, _output_buffer);
         _next_to_send = _send_buffer.data();
         _uncorked_size = 0;
         write();
@@ -663,12 +671,10 @@ void connection::read()
             return; // continue to read
 
         _greeting.assign(_receive_buffer.data(), _receive_buffer.size());
-        _receive_buffer.clear();
+        clear_receive_buffer();
 
         if (_cs_parts.unix_socket_path.empty() &&
-                (!_cs_parts.user.empty() ||
-                 _cs_parts.user != "guest" ||
-                 !_cs_parts.password.empty()))
+            (!_cs_parts.user.empty() && _cs_parts.user != "guest"))
         {
             _state = state::authentication;
 
@@ -676,8 +682,9 @@ void connection::read()
             _send_buffer.clear();
             _next_to_send = _send_buffer.data();
 
-            iproto_client dst(*this, _send_buffer); // skip _output buffer
-            dst.encode_auth_request();
+            iproto_writer dst([this](){ return next_request_id(); }, _send_buffer); // skip _output buffer
+            auto &cs = connection_string_parts();
+            dst.encode_auth_request(_greeting.data(), cs.user, cs.password);
             write();
 
             //iproto_writer dst(*this);
@@ -767,7 +774,7 @@ void connection::write() noexcept
         if (!bytes_to_send && _uncorked_size)
         {
             _send_buffer.clear();
-            _send_buffer.swap(_output_buffer);
+            std::swap(_send_buffer, _output_buffer);
             _next_to_send = _send_buffer.data();
             bytes_to_send = _uncorked_size;
             _uncorked_size = 0;

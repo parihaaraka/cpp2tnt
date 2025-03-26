@@ -11,6 +11,7 @@
 #include "unique_socket.h"
 #include "fu2/function2.hpp"
 #include "cs_parser.h"
+#include "iproto.h"
 
 /// Tarantool connector scope
 namespace tnt
@@ -39,6 +40,8 @@ enum socket_state {
     read_write     ///< read or write
 };
 
+enum class feature : uint8_t;
+
 /// Tarantool connector's network layer.
 class connection
 {
@@ -66,6 +69,7 @@ private:
     size_t _last_received_head_offset = 0;
     size_t _detected_response_size = 0; ///< current response size (to detect it's being fetched en bloc)
     void process_receive_buffer();
+    void clear_receive_buffer();
     void pass_response_to_caller();
     void watch_socket(socket_state mode) noexcept;
 
@@ -77,6 +81,8 @@ private:
     uint64_t _request_id = 0;           ///< sync_id in terms of tnt
     bool _is_corked = false;
     size_t _uncorked_size = 0;          ///< size of data within output buffer
+    proto_id _required_proto;
+    proto_id _server_proto;
 
     // TMP
     time_t _last_write_time = 0;
@@ -86,6 +92,7 @@ private:
         disconnected,
         address_resolving,
         connecting,
+        features_request,
         authentication,
         connected
     };
@@ -124,6 +131,8 @@ public:
     void open(int delay = 0);
     void close(bool call_disconnect_handler = true, int autoreconnect_delay = 0) noexcept;
     void set_connection_string(std::string_view connection_string);
+    /// set iproto version and features which will be requested upon subsequent connection
+    void set_required_proto(proto_id proto);
     /** Thread-safe method to initiate a handler call in the connector's thread */
     void push_handler(fu2::unique_function<void()> &&handler);
 

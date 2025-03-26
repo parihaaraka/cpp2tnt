@@ -1,7 +1,5 @@
 #include "mp_reader.h"
 #include "wtf_buffer.h"
-#include "proto.h"
-#include "msgpuck/ext_tnt.h"
 #include "msgpuck/msgpuck.h"
 
 using namespace std;
@@ -139,17 +137,30 @@ mp_array_reader mp_reader::as_array(size_t ind) const
 mp_reader& mp_reader::operator>> (mp_map_reader &val)
 {
     auto head = _current_pos;
-    skip();
-
     auto type = mp_typeof(*head);
-    if (type != MP_MAP)
+    if (type == MP_MAP)
+    {
+        val._cardinality = mp_decode_map(&head);
+    }
+    else if (type == MP_EXT)
+    {
+        int8_t ext_type = 0;
+        mp_decode_extl(&head, &ext_type);
+        if (ext_type == MP_INTERVAL)
+            // https://www.tarantool.io/en/doc/2.11/dev_guide/internals/msgpack_extensions/#the-interval-type
+            val._cardinality = mp_decode_uint(&head);
+        else
+            throw mp_reader_error("unable to read map from ext type " + std::to_string(type), *this, head);
+    }
+    else
+    {
         throw mp_reader_error("map expected, got " + mpuck_type_name(type), *this, head);
+    }
 
-    auto cardinality = mp_decode_map(&head);
+    skip();
     val._begin = head;
     val._end = _current_pos;
     val._current_pos = head;
-    val._cardinality = cardinality;
 
     return *this;
 }
@@ -157,17 +168,55 @@ mp_reader& mp_reader::operator>> (mp_map_reader &val)
 mp_reader& mp_reader::operator>> (mp_array_reader &val)
 {
     auto head = _current_pos;
-    skip();
-
     auto type = mp_typeof(*head);
-    if (type != MP_ARRAY)
+    if (type == MP_ARRAY)
+    {
+        val._cardinality = mp_decode_array(&head);
+        skip();
+        val._end = _current_pos;
+    }
+    else if (type == MP_EXT)
+    {
+        int8_t ext_type = 0;
+        mp_decode_extl(&head, &ext_type);
+        if (ext_type == MP_ERROR)
+        {
+            // https://www.tarantool.io/en/doc/2.11/dev_guide/internals/msgpack_extensions/#the-error-type
+            // acquire key 0 value from the topmost map
+            uint32_t i = mp_decode_map(&head);
+            while (i--)
+            {
+                uint32_t key = mp_decode_uint(&head);
+                auto value_pos = head;
+                if (key == 0)
+                {
+                    val._cardinality = mp_decode_array(&head);
+                    mp_next(&value_pos);
+                    val._end = value_pos;
+                    val._begin = head;
+                    val._current_pos = head;
+                    skip();
+                    return *this;
+                }
+                else
+                {
+                    mp_next(&head);
+                }
+            }
+            throw mp_reader_error("MP_ERROR_STACK not found within ext error", *this, head);
+        }
+        else
+        {
+            throw mp_reader_error("unable to read map from ext type " + std::to_string(type), *this, head);
+        }
+    }
+    else
+    {
         throw mp_reader_error("array expected, got " + mpuck_type_name(type), *this, head);
+    }
 
-    auto cardinality = mp_decode_array(&head);
     val._begin = head;
-    val._end = _current_pos;
     val._current_pos = head;
-    val._cardinality = cardinality;
 
     return *this;
 }
@@ -196,14 +245,13 @@ string mp_reader::to_string()
 
     string res(256, '\0');
     int cnt = mp_snprint(res.data(), static_cast<int>(res.size()), data);
-    if (cnt < 0)
-        throw mp_reader_error("mp_snprint error", *this);
-
     if (cnt >= static_cast<int>(res.size()))
     {
         res.resize(static_cast<size_t>(cnt + 1));
         cnt = mp_snprint(res.data(), static_cast<int>(res.size()), data);
     }
+    if (cnt < 0)
+        throw mp_reader_error("mp_snprint error", *this, data);
     res.resize(static_cast<size_t>(cnt));
     return res;
 }
@@ -219,20 +267,43 @@ void mp_reader::check() const
     }
 }
 
-mp_reader &mp_reader::operator>>(string &val)
+mp_reader& mp_reader::operator>>(string &val)
 {
     if (mp_typeof(*_current_pos) == MP_EXT)
     {
-        const char *data = _current_pos;
+        const char *ext_head = _current_pos;
+        const char *pos = _current_pos;
+        int8_t ext_type = 0;
+        size_t len = mp_decode_extl(&pos, &ext_type);
         skip();
 
-        val.resize(64, '\0');
-        size_t len = mp_snprint(val.data(), val.size(), data);
+        if (ext_type == MP_UUID) // print uuid without quotes
+        {
+            val.resize(36, '\0');
+            char *dst = val.data();
+            hex_print(&dst, &pos, 4);
+            *dst++ = '-';
+            hex_print(&dst, &pos, 2);
+            *dst++ = '-';
+            hex_print(&dst, &pos, 2);
+            *dst++ = '-';
+            hex_print(&dst, &pos, 2);
+            *dst++ = '-';
+            hex_print(&dst, &pos, 6);
+            return *this;
+        }
+
+        // regular print
+        if (val.size() < 128)
+            val.resize(128, '\0');
+        len = mp_snprint(val.data(), val.size(), ext_head);
         if (len > val.size())
         {
-            val.resize(len, '\0');
-            mp_snprint(val.data(), len, data);
+            val.resize(len + 1, '\0');
+            len = mp_snprint(val.data(), len + 1, ext_head);
         }
+        if (len < 0)
+            throw mp_reader_error("bad ext value content", *this, ext_head);
         val.resize(len);
     }
     else
@@ -246,7 +317,7 @@ mp_reader &mp_reader::operator>>(string &val)
     return *this;
 }
 
-mp_reader &mp_reader::operator>>(string_view &val)
+mp_reader& mp_reader::operator>>(string_view &val)
 {
     // for the sake of convenience
     if (!has_next())
@@ -273,6 +344,18 @@ mp_reader &mp_reader::operator>>(string_view &val)
     {
         throw mp_reader_error("string expected, got " + mpuck_type_name(type), *this);
     }
+    return *this;
+}
+
+mp_reader& mp_reader::operator>> (bool &val)
+{
+    const char *data = _current_pos;
+    auto type = mp_typeof(*data);
+    if (type != MP_BOOL)
+        throw mp_reader_error("boolean expected, got " + mpuck_type_name(type), *this, _current_pos);
+
+    val = mp_decode_bool(&data);
+    skip();
     return *this;
 }
 

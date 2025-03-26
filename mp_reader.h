@@ -1,12 +1,15 @@
 #ifndef MP_READER_H
 #define MP_READER_H
 
+#include <chrono>
 #include <cstddef>
 #include <stdexcept>
 #include <optional>
 #include <vector>
 #include <map>
 #include <cmath>
+#include <charconv>
+#include "msgpuck/ext_tnt.h"
 #include "msgpuck/msgpuck.h"
 
 #if defined _WIN32 || defined __CYGWIN__
@@ -106,7 +109,7 @@ public:
 
     /// Interpret any item as an array via mp_array_reader (?!).
     /// Bad try to simpify things... You'd better don't use it :)
-    mp_array_reader as_array(size_t ind = 0) const;
+    [[deprecated]] mp_array_reader as_array(size_t ind = 0) const;
 
     /// Return current encoded iproto message (header + body) within separate reader
     /// and move current position to next item.
@@ -142,12 +145,13 @@ public:
         return _begin && _end && _end > _begin;
     }
 
-    /// Return reader for a value with specified index.
-    /// Current parsing position stays unchanged. Throws if specified index out of bounds.
+    /// Return reader for a value with the specified index.
+    /// Current parsing position stays unchanged. Throws if the specified index is out of bounds.
     mp_reader operator[](size_t ind) const;
 
     mp_reader& operator>> (std::string &val);
     mp_reader& operator>> (std::string_view &val);
+    mp_reader& operator>> (bool &val);
 
     /// Use >> mp_reader::none() to skip a value or mp_reader::none<N>() to skip N items
     template<size_t N = 1>
@@ -155,6 +159,58 @@ public:
     {
         for (int i = 0; i < N; ++i)
             skip();
+        return *this;
+    }
+
+    template <typename C, typename D>
+    mp_reader& operator>> (std::chrono::time_point<C, D> &val)
+    {
+        using namespace std::chrono;
+        auto type = mp_typeof(*_current_pos);
+        switch (type) {
+        case MP_UINT:
+        case MP_INT:
+            val = time_point<C, D>(D(read<int64_t>()));
+            break;
+        case MP_FLOAT:
+        case MP_DOUBLE:
+            val = time_point<C, D>(D(read<double>()));
+            break;
+        case MP_EXT:
+        {
+            struct tmp {
+                int32_t nsec;
+                int16_t tzoffset;
+                int16_t tzindex;
+            } tail = {0, 0, 0};
+
+            int8_t ext_type;
+            const char *data = _current_pos;
+            uint32_t len = mp_decode_extl(&data, &ext_type);
+
+            if (ext_type != MP_DATETIME)
+                throw mp_reader_error("unable to extract time_point from " + mpuck_type_name(type), *this, data);
+            if (len != sizeof(int64_t) && len != sizeof(int64_t) + sizeof(tail))
+                throw mp_reader_error("unexpected MP_DATETIME value", *this, data);
+
+            int64_t epoch;
+            memcpy(&epoch, data, sizeof(epoch));
+            data += sizeof(epoch);
+
+            if (len != sizeof(int64_t))
+                memcpy(&tail, data, sizeof(tail));
+
+            if (tail.nsec)
+                val = time_point<C, D>(duration<int64_t, std::nano>(tail.nsec + epoch*1000000000));
+            else
+                val = time_point<C, D>(duration<int64_t>(epoch));
+            skip();
+            break;
+        }
+        default:
+            throw mp_reader_error("unable to get time_point from " + mpuck_type_name(type), *this, _current_pos);
+        }
+
         return *this;
     }
 
@@ -190,17 +246,22 @@ public:
         const char *prev_pos = _current_pos;
         skip();
 
-        auto type = mp_typeof(*data);
-        if constexpr (std::is_same_v<T, bool>)
-        {
-            if (type == MP_BOOL)
-            {
-                val = mp_decode_bool(&data);
+        auto ext_via_string = [prev_pos, &val, this]() -> mp_reader& {
+            char tmp[64];
+            auto len = mp_snprint(tmp, 64, prev_pos);
+            auto [ptr, ec] = std::from_chars(tmp, tmp + len, val);
+            if (ec == std::errc())
                 return *this;
-            }
-            throw mp_reader_error("boolean expected, got " + mpuck_type_name(type), *this, prev_pos);
-        }
-        else if constexpr (std::is_floating_point_v<T>)
+
+            if (ec == std::errc::invalid_argument)
+                throw mp_reader_error("not a number", *this, prev_pos);
+            else if (ec == std::errc::result_out_of_range)
+                throw mp_reader_error("out of range", *this, prev_pos);
+            throw mp_reader_error("error parsing number", *this, prev_pos);
+        };
+
+        auto type = mp_typeof(*data);
+        if constexpr (std::is_floating_point_v<T>)
         {
             if (type == MP_FLOAT)
             {
@@ -217,6 +278,10 @@ public:
                 }
                 val = static_cast<T>(res);
                 return *this;
+            }
+            else if (type == MP_EXT)
+            {
+                return ext_via_string();
             }
             throw mp_reader_error("float expected, got " + mpuck_type_name(type), *this, prev_pos);
         }
@@ -239,6 +304,10 @@ public:
                     val = static_cast<T>(res);
                     return *this;
                 }
+            }
+            else if (type == MP_EXT)
+            {
+                return ext_via_string();
             }
             else
             {

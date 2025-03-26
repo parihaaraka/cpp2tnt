@@ -1,99 +1,100 @@
 #include "wtf_buffer.h"
+#include <stdexcept>
 
-wtf_buffer::wtf_buffer(size_t size) : _local_buf(size)
+wtf_buffer::wtf_buffer(size_t size) : wtf_buffer(std::vector<char>(size), 0)
 {
-    _buf = &_local_buf;
-    end = _buf->data();
 }
 
-wtf_buffer::wtf_buffer(std::vector<char> &buf, size_t offset) : _buf(&buf)
+wtf_buffer::wtf_buffer(std::vector<char> &buf, size_t offset)
+    : target(&buf)
 {
-    end = _buf->data() + offset;
+    auto &v = *std::get<std::vector<char>*>(target);
+    head = v.data();
+    end_of_storage = v.data() + v.capacity();
+    end = head + offset;
 }
 
-wtf_buffer::wtf_buffer(std::vector<char> &&buf, size_t offset) : _local_buf(std::move(buf))
+wtf_buffer::wtf_buffer(std::vector<char> &&buf, size_t offset)
+    : target(buf)
 {
-    _buf = &_local_buf;
-    end = _buf->data() + offset;
+    auto &v = std::get<std::vector<char>>(target);
+    head = v.data();
+    end_of_storage = v.data() + v.capacity();
+    end = head + offset;
+}
+
+wtf_buffer::wtf_buffer(char *data, size_t length, fu2::unique_function<char*(size_t)> realloc)
+    : target(std::move(realloc))
+{
+    if (!data)
+        throw std::invalid_argument("nullptr data is not allowed");
+    head = data;
+    end_of_storage = data + length;
+    end = head;
 }
 
 size_t wtf_buffer::capacity() const noexcept
 {
-    return _buf->size();
+    return end_of_storage - head;
 }
 
 size_t wtf_buffer::size() const noexcept
 {
-    return static_cast<size_t>(end - _buf->data());
+    return end - head;
 }
 
 size_t wtf_buffer::available() const noexcept
 {
-    return _buf->size() - size();
+    return end_of_storage - end;
 }
 
 char *wtf_buffer::data() noexcept
 {
-    return _buf->data();
+    return head;
 }
 
 const char *wtf_buffer::data() const noexcept
 {
-    return _buf->data();
+    return head;
 }
 
 void wtf_buffer::reserve(size_t size)
 {
-	size_t s = this->size();
-    _buf->resize(size);
-    end = _buf->data() + s;
+    if (size <= capacity())
+        return;
+    size_t content_size = this->size();
+
+    size_t ind = target.index();
+    if (!ind)
+    {
+        auto &realloc = std::get<0>(target);
+        if (!realloc)
+            throw std::runtime_error("unable to resize raw buffer");
+        head = realloc(size);
+    }
+    else
+    {
+        std::vector<char>* buf;
+        if (ind == 1)
+            buf = std::get<1>(target);
+        else
+            buf = &std::get<2>(target);
+
+        buf->resize(size);
+        head = buf->data();
+    }
+    end_of_storage = head + size;
+    end = head + content_size;
 }
 
 void wtf_buffer::resize(size_t size)
 {
     if (size > capacity())
-        _buf->resize(size);
-    end = _buf->data() + size;
+        reserve(size);
+    end = head + size;
 }
 
 void wtf_buffer::clear() noexcept
 {
-    end = _buf->data();
-    if (on_clear)
-        on_clear();
-}
-
-void wtf_buffer::swap(wtf_buffer &other) noexcept
-{
-    bool this_owner = (_buf == &_local_buf);
-	size_t this_size = size();
-    bool other_owner = (other._buf == &other._local_buf);
-    size_t other_size = other.size();
-    _local_buf.swap(other._local_buf);
-    std::swap(_buf, other._buf);
-    if (this_owner)
-		other._buf = &other._local_buf;
-	if (other_owner)
-		_buf = &_local_buf;
-	end = _buf->data() + other_size;
-	other.end = other.data() + this_size;
-    // DO NOT swap on_clear!
-}
-
-wtf_buffer::wtf_buffer(wtf_buffer &&src)
-{
-    _local_buf = std::move(src._local_buf);
-    _buf = src._buf;
-    end = src.end;
-}
-
-wtf_buffer &wtf_buffer::operator=(wtf_buffer &&src)
-{
-    if (this != &src)
-    {
-        _local_buf = std::move(src._local_buf);
-        _buf = src._buf;
-        end = src.end;
-    }
-    return *this;
+    end = head;
 }
