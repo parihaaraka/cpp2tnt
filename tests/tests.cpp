@@ -9,6 +9,8 @@
 #include "ut.hpp"
 
 using namespace std;
+using namespace boost; // nothrow is ambiguous
+using namespace boost::ut;
 
 extern std::string hex_dump(const char *begin, const char *end, const char *pos);
 
@@ -29,6 +31,7 @@ void throw_if_error(const mp_map_reader &header, const mp_map_reader &body)
     if (code)
     {
         string err(body[tnt::response_field::ERROR].to_string());
+        boost::ut::log << ut::colors{}.fail << err << "\n" << ut::colors{}.none;
         throw runtime_error(err);
     }
 };
@@ -51,8 +54,6 @@ std::vector<char> hex2bin(string_view hex)
 
 int main(int argc, char *argv[])
 {
-    using namespace boost; // nothrow is ambiguous
-    using namespace boost::ut;
     using namespace std::chrono;
     "wtf_buffer"_test = [] {
         std::vector<char> storage(1);
@@ -156,6 +157,8 @@ int main(int argc, char *argv[])
 
     scope s = run_loop();
     bool connected = open_tnt_connection(argc > 1 ? argv[1] : "localhost:3301");
+    if (!connected)
+      ut::log << ut::colors{}.fail << "* pass tnt connection string as a first argument (default: \"localhost:3301\")\n" << ut::colors{}.none;
 
 /*  tnt 2.11.5:
 > box.error.new({code=20001, reason='test', fields={var1='payload'}}):unpack()
@@ -201,7 +204,8 @@ return
   true
 )");
                 set_handler(cn.last_request_id(), [](const mp_map_reader &header, const mp_map_reader &body) {
-                    expect(ut::nothrow([&](){ throw_if_error(header, body); }));
+                    expect(ut::nothrow([&](){
+                      throw_if_error(header, body); }));
                     // response is an array of returned values with 32 bit length
                     auto ret_data = body[tnt::response_field::DATA];
                     //ut::log << "response content:\n" << hex_dump(ret_data.begin(), ret_data.end()) << "\n";

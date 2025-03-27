@@ -40,8 +40,8 @@ enum class feature : uint8_t
 {
     STREAMS = 0,
     TRANSACTIONS,
-    ERROR_EXTENSION,
-    WATCHERS,
+    ERROR_EXTENSION, /// proto 2+
+    WATCHERS,        /// proto 3+
     PAGINATION,
     invalid
 };

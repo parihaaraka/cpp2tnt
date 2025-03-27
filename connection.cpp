@@ -100,14 +100,28 @@ void connection::process_receive_buffer()
     {
         // automatic authentication must be processed in a special way
         // (in contradistinction to manual authentication request)
-        if (_state == state::authentication)
+        if (_state == state::features_request || _state == state::authentication)
         {
             try
             {
-                mp_reader response = mp_reader(_receive_buffer).iproto_message();
-                uint32_t code;
-                response.read<mp_map_reader>()[header_field::CODE] >> code;
-                if (!code)
+                auto send_auth_request = [this]() ->bool
+                {
+                    if (_cs_parts.user.empty() || _cs_parts.user == "guest")
+                        return false;
+
+                    clear_receive_buffer();
+                    _state = state::authentication;
+                    _send_buffer.clear();
+                    _next_to_send = _send_buffer.data();
+
+                    iproto_writer dst([this](){ return next_request_id(); }, _send_buffer); // skip _output buffer
+                    auto &cs = connection_string_parts();
+                    dst.encode_auth_request(_greeting.data(), cs.user, cs.password);
+                    write();
+                    return true;
+                };
+
+                auto set_connected = [this]()
                 {
                     clear_receive_buffer();
                     _state = state::connected;
@@ -124,10 +138,56 @@ void connection::process_receive_buffer()
                         }
                         catch (...) {}
                     }
+                };
+
+                mp_reader response = mp_reader(_receive_buffer).iproto_message();
+                uint32_t code;
+                response.read<mp_map_reader>()[header_field::CODE] >> code;
+                if (!code)
+                {
+                    if (_state == state::features_request)
+                    {
+                        // read server-side proto_id
+                        auto body = response.read<mp_map_reader>();
+                        while (body.has_next())
+                        {
+                            auto key = body.read<uint32_t>();
+                            switch (key)
+                            {
+                            case body_field::VERSION: body >>_server_proto.version; break;
+                            case body_field::AUTH_TYPE: body >> _server_proto.auth; break;
+                            case body_field::FEATURES:
+                            {
+                                auto ff = body.read<mp_array_reader>();
+                                while (ff.has_next())
+                                    _server_proto.features.set(ff.read<uint8_t>());
+                                break;
+                            }
+                            default:
+                                body.skip();
+                            }
+                        }
+
+                        if (send_auth_request())
+                            return;
+
+                        // stay unauthenticated (guest?)
+                    }
+                    set_connected();
                     return;
                 }
+
                 code &= 0x7fff;
-                handle_error(response.read<mp_map_reader>()[response_field::ERROR].to_string(), error::auth, code);
+                if (_state == state::features_request && code == 0x30) // ER_UNKNOWN_REQUEST_TYPE
+                {
+                    if (send_auth_request())
+                        return;
+                    set_connected();
+                    return;
+                }
+                handle_error(response.read<mp_map_reader>()[response_field::ERROR].to_string(),
+                             _state == state::features_request ? error::features : error::auth,
+                             code);
             }
             catch (const mp_reader_error &e)
             {
@@ -396,6 +456,7 @@ void connection::close(bool call_disconnect_handler, int autoreconnect_delay) no
 {
     auto prev_async_stage = _state;
     _greeting.clear();
+    _server_proto = {};
     _state = state::disconnected;
     _request_id = 0;
     _idle_ticks_counter = 0;
@@ -408,6 +469,7 @@ void connection::close(bool call_disconnect_handler, int autoreconnect_delay) no
     {
         _autoreconnect_ticks_counter = -1;
     }
+
     if (!_socket)
         return;
 
@@ -673,43 +735,14 @@ void connection::read()
         _greeting.assign(_receive_buffer.data(), _receive_buffer.size());
         clear_receive_buffer();
 
-        if (_cs_parts.unix_socket_path.empty() &&
-            (!_cs_parts.user.empty() && _cs_parts.user != "guest"))
-        {
-            _state = state::authentication;
+        _state = state::features_request;
+        // just to be sure that the buffer is not littered by a caller who ignored on_closed event
+        _send_buffer.clear();
+        _next_to_send = _send_buffer.data();
 
-            // just to be sure that the buffer is not littered by a caller who ignored on_closed event
-            _send_buffer.clear();
-            _next_to_send = _send_buffer.data();
-
-            iproto_writer dst([this](){ return next_request_id(); }, _send_buffer); // skip _output buffer
-            auto &cs = connection_string_parts();
-            dst.encode_auth_request(_greeting.data(), cs.user, cs.password);
-            write();
-
-            //iproto_writer dst(*this);
-            //dst.encode_auth_request();
-            //flush();
-        }
-        else
-        {
-            // no need to authenticate
-            _state = state::connected;
-            _autoreconnect_ticks_counter = -1;
-            if (_connected_cb)
-            {
-                try
-                {
-                    _connected_cb();
-                }
-                catch (const exception &e)
-                {
-                    handle_error(e.what(), error::external);
-                }
-                catch (...) {}
-            }
-        }
-
+        iproto_writer dst([this](){ return next_request_id(); }, _send_buffer); // skip _output buffer
+        dst.encode_id_request(_required_proto);
+        write();
         return;
     }
 

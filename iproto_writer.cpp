@@ -126,17 +126,26 @@ void iproto_writer::encode_auth_request(const char* greeting, std::string_view u
 void iproto_writer::encode_id_request(proto_id proto)
 {
     encode_request_header(tnt::request_type::PROTO_ID);
-    _buf.end = mp_encode_map(_buf.end, 3);
-    _buf.end = mp_encode_uint(_buf.end, tnt::body_field::VERSION);
-    _buf.end = mp_encode_uint(_buf.end, proto.version);
+    _buf.end = mp_encode_map(_buf.end, 1 + (proto.version ? 1 : 0) + (proto.auth.empty() ? 0 : 1));
+
+    if (proto.version)
+    {
+        _buf.end = mp_encode_uint(_buf.end, tnt::body_field::VERSION);
+        _buf.end = mp_encode_uint(_buf.end, proto.version);
+    }
+
     auto features = proto.list_features();
     _buf.end = mp_encode_uint(_buf.end, tnt::body_field::FEATURES);
     _buf.end = mp_encode_array(_buf.end, features.size());
     // actually we could memcpy features as is
     for (auto &f: features)
         _buf.end = mp_encode_uint(_buf.end, f);
-    _buf.end = mp_encode_uint(_buf.end, tnt::body_field::AUTH_TYPE);
-    _buf.end = mp_encode_str(_buf.end, proto.auth.data(), proto.auth.size());
+
+    if (!proto.auth.empty())
+    {
+        _buf.end = mp_encode_uint(_buf.end, tnt::body_field::AUTH_TYPE);
+        _buf.end = mp_encode_str(_buf.end, proto.auth.data(), proto.auth.size());
+    }
     finalize();
 }
 
