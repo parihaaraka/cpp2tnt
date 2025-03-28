@@ -116,7 +116,7 @@ void connection::process_receive_buffer()
 
                     iproto_writer dst([this](){ return next_request_id(); }, _send_buffer); // skip _output buffer
                     auto &cs = connection_string_parts();
-                    dst.encode_auth_request(_greeting.data(), cs.user, cs.password);
+                    dst.encode_auth_request(_greeting.data(), cs.user, cs.password, _server_proto.auth);
                     write();
                     return true;
                 };
@@ -160,7 +160,11 @@ void connection::process_receive_buffer()
                             {
                                 auto ff = body.read<mp_array_reader>();
                                 while (ff.has_next())
-                                    _server_proto.features.set(ff.read<uint8_t>());
+                                {
+                                    auto fnum = ff.read<uint8_t>();
+                                    if (fnum <_server_proto.features.size())
+                                        _server_proto.features.set(fnum);
+                                }
                                 break;
                             }
                             default:
@@ -185,7 +189,7 @@ void connection::process_receive_buffer()
                     set_connected();
                     return;
                 }
-                handle_error(response.read<mp_map_reader>()[response_field::ERROR].to_string(),
+                handle_error(response.read<mp_map_reader>()[response_field::IPROTO_ERROR_24].to_string(),
                              _state == state::features_request ? error::features : error::auth,
                              code);
             }

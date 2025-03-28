@@ -82,7 +82,7 @@ private:
     uint64_t _request_id = 0;           ///< sync_id in terms of tnt
     bool _is_corked = false;
     size_t _uncorked_size = 0;          ///< size of data within output buffer
-    proto_id _required_proto{};
+    proto_id _required_proto{{feature::ERROR_EXTENSION}, 0, "chap-sha1"};
     proto_id _server_proto{};
 
     // TMP

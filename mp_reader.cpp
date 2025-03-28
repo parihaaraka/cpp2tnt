@@ -147,10 +147,18 @@ mp_reader& mp_reader::operator>> (mp_map_reader &val)
         int8_t ext_type = 0;
         mp_decode_extl(&head, &ext_type);
         if (ext_type == MP_INTERVAL)
+        {
             // https://www.tarantool.io/en/doc/2.11/dev_guide/internals/msgpack_extensions/#the-interval-type
             val._cardinality = mp_decode_uint(&head);
+        }
+        else if (ext_type == MP_ERROR)  // acquire error container (map with key 0x31 (PROTO_ERROR_24) and optional 0x52 (IPROTO_ERROR))
+        {
+            val._cardinality = mp_decode_map(&head);
+        }
         else
+        {
             throw mp_reader_error("unable to read map from ext type " + std::to_string(type), *this, head);
+        }
     }
     else
     {
@@ -179,7 +187,7 @@ mp_reader& mp_reader::operator>> (mp_array_reader &val)
     {
         int8_t ext_type = 0;
         mp_decode_extl(&head, &ext_type);
-        if (ext_type == MP_ERROR)
+        if (ext_type == MP_ERROR) // extract error stack
         {
             // https://www.tarantool.io/en/doc/2.11/dev_guide/internals/msgpack_extensions/#the-error-type
             // acquire key 0 value from the topmost map
@@ -188,7 +196,7 @@ mp_reader& mp_reader::operator>> (mp_array_reader &val)
             {
                 uint32_t key = mp_decode_uint(&head);
                 auto value_pos = head;
-                if (key == 0)
+                if (key == 0x00) // stack
                 {
                     val._cardinality = mp_decode_array(&head);
                     mp_next(&value_pos);

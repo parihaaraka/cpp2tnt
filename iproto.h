@@ -46,6 +46,19 @@ enum class feature : uint8_t
     invalid
 };
 
+/// error stack item keys:
+/// https://www.tarantool.io/en/doc/2.11/dev_guide/internals/msgpack_extensions/#the-error-type
+enum error_field
+{
+    MP_ERROR_TYPE     = 0x00,  // MP_STR
+    MP_ERROR_FILE     = 0x01,  // MP_STR
+    MP_ERROR_LINE     = 0x02,  // MP_UINT
+    MP_ERROR_MESSAGE  = 0x03,  // MP_STR
+    MP_ERROR_ERRNO    = 0x04,  // MP_UINT
+    MP_ERROR_ERRCODE  = 0x05,  // MP_UINT
+    MP_ERROR_FIELDS   = 0x06,  // MP_MAPs
+};
+
 /// Request body field types (keys)
 enum body_field
 {
@@ -74,11 +87,11 @@ enum body_field
 /// Response body field types (keys)
 enum response_field
 {
-    DATA      = 0x30,
-    ERROR     = 0x31, // IPROTO_ERROR_24
-    METADATA  = 0x32,
-    SQL_INFO  = 0x42,
-    ERROR_OBJ = 0x52, // IPROTO_ERROR
+    IPROTO_DATA     = 0x30, // used in all requests and responses
+    IPROTO_ERROR_24 = 0x31, // old style error (string)
+    IPROTO_METADATA = 0x32, // SQL transaction metadata
+    IPROTO_SQL_INFO = 0x42, // additional SQL-related parameters
+    IPROTO_ERROR    = 0x52, // new style error (map with error stack)
 };
 
 /// Request/response header field types (keys)
@@ -121,7 +134,7 @@ struct proto_id
     std::vector<uint8_t> list_features() const;
     uint64_t version = 0;
     std::string auth;
-    std::bitset<8> features{};
+    std::bitset<32> features{}; // в tnt 3.3.1 уже есть 12 фич, и многих нет в документации
 };
 
 } // namespace tnt
