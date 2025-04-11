@@ -18,24 +18,30 @@ constexpr int SALT_SIZE     =  44;
 /// Request types
 enum class request_type : uint8_t
 {
-    OK        = 0x00,
-    SELECT    = 0x01,
-    INSERT    = 0x02,
-    REPLACE   = 0x03,
-    UPDATE    = 0x04,
-    DELETE    = 0x05,
-    CALL_16   = 0x06,
-    AUTH      = 0x07,
-    EVAL      = 0x08,
-    UPSERT    = 0x09,
-    CALL      = 0x0a,
-    EXECUTE   = 0x0b, // sql
-    NOP       = 0x0c,
-    PREPARE   = 0x0d, // sql
-    PING      = 0x40,
-    PROTO_ID  = 0x49, // https://www.tarantool.io/en/doc/latest/reference/internals/iproto/requests/#iproto-id
+    OK         = 0x00,
+    SELECT     = 0x01,
+    INSERT     = 0x02,
+    REPLACE    = 0x03,
+    UPDATE     = 0x04,
+    DELETE     = 0x05,
+    CALL_16    = 0x06,
+    AUTH       = 0x07,
+    EVAL       = 0x08,
+    UPSERT     = 0x09,
+    CALL       = 0x0a,
+    EXECUTE    = 0x0b, // sql
+    NOP        = 0x0c,
+    PREPARE    = 0x0d, // sql
+    PING       = 0x40,
+    PROTO_ID   = 0x49, // https://www.tarantool.io/en/doc/latest/reference/internals/iproto/requests/#iproto-id
+    WATCH      = 0x4a, // https://www.tarantool.io/ru/doc/latest/reference/internals/iproto/events/#iproto-watch
+    UNWATCH    = 0x4b,
+    EVENT      = 0x4c,
+    WATCH_ONCE = 0x4d, // Synchronous request to fetch the data that is currently attached to a notification key without subscribing to changes.
 };
 
+/// iproto features and protocol versions
+/// https://github.com/tarantool/tarantool/blob/e2a6e2cd13b73cd3ace7b055489de47bc8ecd1a2/src/box/iproto_features.h
 enum class feature : uint8_t
 {
     STREAMS = 0,
