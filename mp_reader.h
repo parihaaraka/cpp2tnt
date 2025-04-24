@@ -116,7 +116,7 @@ public:
     mp_reader iproto_message();
 
     /// Extract and serialize value to string (nil -> 'null') and move current position to next item.
-    std::string to_string();
+    std::string to_string(uint32_t flags = 0);
 
     /// Validate MsgPack within current buffer (all items)
     void check() const;
@@ -248,7 +248,7 @@ public:
 
         auto ext_via_string = [prev_pos, &val, this]() -> mp_reader& {
             char tmp[64];
-            auto len = mp_snprint(tmp, 64, prev_pos);
+            auto len = mp_snprint(tmp, 64, prev_pos, 0);
             auto [ptr, ec] = std::from_chars(tmp, tmp + len, val);
             if (ec == std::errc())
                 return *this;

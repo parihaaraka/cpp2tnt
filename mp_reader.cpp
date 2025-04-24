@@ -246,17 +246,17 @@ mp_reader mp_reader::iproto_message()
     return mp_reader{head, _current_pos};
 }
 
-string mp_reader::to_string()
+string mp_reader::to_string(uint32_t flags)
 {
     const char *data = _current_pos;
     skip();
 
     string res(256, '\0');
-    int cnt = mp_snprint(res.data(), static_cast<int>(res.size()), data);
+    int cnt = mp_snprint(res.data(), static_cast<int>(res.size()), data, flags);
     if (cnt >= static_cast<int>(res.size()))
     {
         res.resize(static_cast<size_t>(cnt + 1));
-        cnt = mp_snprint(res.data(), static_cast<int>(res.size()), data);
+        cnt = mp_snprint(res.data(), static_cast<int>(res.size()), data, flags);
     }
     if (cnt < 0)
         throw mp_reader_error("mp_snprint error", *this, data);
@@ -279,40 +279,19 @@ mp_reader& mp_reader::operator>>(string &val)
 {
     if (mp_typeof(*_current_pos) == MP_EXT)
     {
-        const char *ext_head = _current_pos;
-        const char *pos = _current_pos;
-        int8_t ext_type = 0;
-        size_t len = mp_decode_extl(&pos, &ext_type);
-        skip();
-
-        if (ext_type == MP_UUID) // print uuid without quotes
-        {
-            val.resize(36, '\0');
-            char *dst = val.data();
-            hex_print(&dst, &pos, 4);
-            *dst++ = '-';
-            hex_print(&dst, &pos, 2);
-            *dst++ = '-';
-            hex_print(&dst, &pos, 2);
-            *dst++ = '-';
-            hex_print(&dst, &pos, 2);
-            *dst++ = '-';
-            hex_print(&dst, &pos, 6);
-            return *this;
-        }
-
         // regular print
         if (val.size() < 128)
             val.resize(128, '\0');
-        len = mp_snprint(val.data(), val.size(), ext_head);
+        size_t len = mp_snprint(val.data(), val.size(), _current_pos, UNQUOTE_UUID);
         if (len > val.size())
         {
             val.resize(len + 1, '\0');
-            len = mp_snprint(val.data(), len + 1, ext_head);
+            len = mp_snprint(val.data(), len + 1, _current_pos, UNQUOTE_UUID);
         }
         if (len < 0)
-            throw mp_reader_error("bad ext value content", *this, ext_head);
+            throw mp_reader_error("bad ext value content", *this, _current_pos);
         val.resize(len);
+        skip();
     }
     else
     {
