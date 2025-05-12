@@ -7,8 +7,49 @@
 #include <array>
 #include <map>
 #include <cmath>
+#include "mp_reader.h"
 #include "msgpuck/msgpuck.h"
 #include "wtf_buffer.h"
+
+/// type to represent raw msgpack bytes via string literal
+class mp_raw_view
+{
+    const char *_begin = nullptr;
+    const char *_end = nullptr;
+    size_t _cardinality = 1;
+
+public:
+    constexpr inline mp_raw_view(const char *data, size_t len) : _begin(data), _end(data + len) {}
+    /// set the number of msgpack items encoded
+    inline constexpr mp_raw_view& c(size_t c) noexcept
+    {
+        _cardinality = c;
+        return *this;
+    }
+    inline size_t size() const noexcept
+    {
+        if (_begin)
+            return _end - _begin;
+        return 0;
+    }
+    inline const char* data() const noexcept
+    {
+        return _begin;
+    }
+    inline const char* end() const noexcept
+    {
+        return _end;
+    }
+    inline size_t cardinality() const noexcept
+    {
+        return _cardinality;
+    }
+};
+
+inline constexpr mp_raw_view operator ""_mp(const char* data, size_t size)
+{
+    return mp_raw_view{data, size};
+}
 
 /** msgpuck wrapper.
  *
@@ -49,8 +90,18 @@ public:
         write(data.data(), data.end, cardinality);
     }
 
+    /// Fill current container with `items_to_fill` up to `target_items_count` (as close as possible)
+    mp_writer& fill(mp_raw_view items_to_fill, uint32_t target_items_count);
+
     inline operator const wtf_buffer&() const noexcept { return _buf; }
     inline wtf_buffer& buf() const noexcept { return _buf; }
+
+    /// clear output buffer and reset current position on its head (for fast buffer reuse)
+    inline void reset()
+    {
+        _opened_containers.clear();
+        _buf.clear();
+    }
 
     mp_writer& operator<< (std::nullptr_t);
     mp_writer& operator<< (const std::string_view &val);
@@ -59,6 +110,17 @@ public:
         write(data);
         return *this;
     }
+
+    inline mp_writer& operator<< (const mp_raw_view &val)
+    {
+        write(val.data(), val.data() + val.size(), val.cardinality());
+        return *this;
+    }
+
+    //inline mp_writer& operator<< (const char val[])
+    //{
+    //    *this << std::string_view{val, sizeof(val)};
+    //}
 
     template <typename T>
     mp_writer& operator<< (const std::optional<T> &val) noexcept
@@ -147,6 +209,28 @@ public:
         return *this;
     }
 
+    template<typename... Args>
+    mp_writer& operator<< (const std::tuple<Args&&...> &val)
+    {
+        begin_array(std::tuple_size_v<std::tuple<Args&&...>>);
+        std::apply(
+            [this](const auto&... item)
+            {
+                ((*this << item), ...);
+            },
+            val
+        );
+        finalize();
+        return *this;
+    }
+
+    template<size_t maxN>
+    mp_writer& operator<< (const mp_span<maxN> &src)
+    {
+        write(src.begin(), src.end(), src.cardinality());
+        return *this;
+    }
+
     template <typename T>
     mp_writer& operator<< (const std::vector<T> &val)
     {
@@ -200,6 +284,10 @@ protected:
         bool empty() const noexcept
         {
             return _size == 0;
+        }
+        void clear() noexcept
+        {
+            _size = 0;
         }
     };
 

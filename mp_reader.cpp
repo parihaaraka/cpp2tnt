@@ -4,15 +4,6 @@
 
 using namespace std;
 
-struct mp_ext_initializer
-{
-    mp_ext_initializer()
-    {
-        mp_snprint_ext = mp_snprint_ext_tnt;
-        mp_fprint_ext = mp_fprint_ext_tnt;
-    }
-};
-
 std::string hex_dump(const char *begin, const char *end, const char *pos)
 {
     std::string res;
@@ -91,7 +82,12 @@ mp_reader::mp_reader(const char *begin, const char *end)
 {
     _current_pos = _begin = begin;
     _end = end;
-    static mp_ext_initializer i;
+}
+
+void mp_reader::initialize()
+{
+    mp_snprint_ext = mp_snprint_ext_tnt;
+    mp_fprint_ext = mp_fprint_ext_tnt;
 }
 
 void mp_reader::skip(const char **pos) const
@@ -180,8 +176,12 @@ mp_reader& mp_reader::operator>> (mp_array_reader &val)
     if (type == MP_ARRAY)
     {
         val._cardinality = mp_decode_array(&head);
-        skip();
-        val._end = _current_pos;
+        // avoid read through all the msgpack from mp_array_reader(const char *begin, const char *end)
+        if (this != &val)
+        {
+            skip();
+            val._end = _current_pos;
+        }
     }
     else if (type == MP_EXT)
     {

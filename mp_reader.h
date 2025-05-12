@@ -41,6 +41,7 @@ class wtf_buffer;
 class mp_map_reader;
 class mp_array_reader;
 class mp_reader;
+template <size_t maxN = 64> class mp_span;
 
 std::string hex_dump(const char *begin, const char *end, const char *pos = nullptr);
 
@@ -65,20 +66,12 @@ public:
     mp_reader(const char *begin = nullptr, const char *end = nullptr);
 
     template <std::size_t N = 1>
-    class none_t {
-    private:
-        none_t() = default;
-    public:
-        static none_t& instance()
-        {
-            static none_t tmp; return tmp;
-        }
-    };
+    class none_t {};
 
     template <std::size_t N = 1>
-    static none_t<N>& none()
+    static none_t<N> none()
     {
-        return none_t<N>::instance();
+        return none_t<N>();
     }
 
     inline const char* begin() const noexcept
@@ -101,6 +94,14 @@ public:
     {
         skip(&_current_pos);
     }
+
+    inline size_t size() const
+    {
+        return _end - _begin;
+    }
+
+    /// Initialize mp_reader environment. It overrides ext types print functions for now.
+    static void initialize();
 
     /// Skip MsgPack item pointed by pos (within current buffer)
     void skip(const char **pos) const;
@@ -155,10 +156,24 @@ public:
 
     /// Use >> mp_reader::none() to skip a value or mp_reader::none<N>() to skip N items
     template<size_t N = 1>
-    mp_reader& operator>> (none_t<N>&)
+    mp_reader& operator>> (none_t<N>)
     {
         for (int i = 0; i < N; ++i)
             skip();
+        return *this;
+    }
+
+    template<size_t maxN>
+    mp_reader& operator>> (mp_span<maxN> &dst)
+    {
+        dst._begin = _current_pos;
+        for (size_t i = 0; i < maxN && has_next(); ++i)
+        {
+            skip();
+            dst._rbounds[i] = _current_pos - dst._begin;
+            ++dst._cardinality;
+        }
+        dst._end = _current_pos;
         return *this;
     }
 
@@ -343,6 +358,14 @@ public:
         return res;
     }
 
+    template <size_t maxN>
+    mp_span<maxN> read()
+    {
+        mp_span<maxN> dst{};
+        *this >> dst;
+        return dst;
+    }
+
     template <typename T>
     T read_or(T &&def)
     {
@@ -432,7 +455,7 @@ public:
     }
 
 protected:
-    const char *_begin, *_end, *_current_pos;
+    const char *_begin = nullptr, *_end = nullptr, *_current_pos = nullptr;
 };
 
 /// messagepack map reader
@@ -507,7 +530,7 @@ public:
         return *this;
     }
 
-private:
+protected:
     friend class mp_reader;
     mp_array_reader(const char *begin, const char *end, size_t cardinality);
     size_t _cardinality = 0;
@@ -564,5 +587,58 @@ mp_reader& mp_reader::operator>> (std::tuple<Args&...> val)
     );
     return *this;
 }
+
+/// Msgpack span with extracted bounds of its items. Intended to be selectively streamed into mp_writer but
+/// may be used for fast multiple items access in a non-sequental manner.
+template <size_t maxN>
+class mp_span : public mp_array_reader
+{
+    friend class mp_reader;
+public:
+    mp_span() = default;
+    mp_span(const char *begin, const char *end) : mp_array_reader(begin, end, 0)
+    {
+        mp_reader r(begin, end);
+        r >> *this;
+    }
+
+    using mp_reader::operator>>;
+    using mp_array_reader::operator>>;
+
+    mp_span sub(size_t first_ind, size_t last_ind) const
+    {
+        if (first_ind > last_ind)
+            throw mp_reader_error("first_ind > last_ind", *this);
+        if (last_ind >= _cardinality)
+            throw mp_reader_error("read out of bounds", *this);
+        return mp_span<maxN>(_begin + (first_ind ? _rbounds[first_ind - 1] : 0),
+                             _begin + _rbounds[last_ind],
+                             last_ind - first_ind + 1,
+                             &_rbounds[first_ind]);
+    }
+
+    /// Return single value span for the specified item.
+    /// Current parsing position of underlying mp_reader (if somebody gonna use it within mp_span) stays unchanged.
+    mp_span operator[](size_t ind) const
+    {
+        return sub(ind, ind);
+    }
+
+    template <size_t maxArgN>
+    bool operator== (const mp_span<maxArgN>& s) const
+    {
+        if (*this && s && size() == s.size())
+            return memcmp(_begin, s.begin(), s.size()) == 0;
+        return false;
+    }
+
+private:
+    mp_span(const char *begin, const char *end, size_t cardinality, const uint32_t *first_rbound) : mp_array_reader(begin, end, cardinality)
+    {
+        std::copy(first_rbound, first_rbound + cardinality, (uint32_t*)_rbounds.data());
+    };
+    /// end of items offsets
+    std::array<uint32_t, maxN> _rbounds;
+};
 
 #endif // MP_READER_H

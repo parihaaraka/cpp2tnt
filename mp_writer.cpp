@@ -127,6 +127,21 @@ void mp_writer::write(const char *begin, const char *end, size_t cardinality)
     }
 }
 
+mp_writer &mp_writer::fill(mp_raw_view items_to_fill, uint32_t target_items_count)
+{
+    if (_opened_containers.empty())
+        throw runtime_error("no opened containers");
+    auto &c = _opened_containers.top();
+    while (c.items_count < target_items_count)
+    {
+        if (c.items_count + items_to_fill.cardinality() <= target_items_count)
+            *this << items_to_fill;
+        else
+            break;  // if target_items_count % items_to_fill.cardinality != 0
+    }
+    return *this;
+}
+
 mp_writer &mp_writer::operator<<(nullptr_t)
 {
     _buf.end = mp_encode_nil(_buf.end);
