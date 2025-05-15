@@ -5,6 +5,9 @@
 #include <vector>
 #include "fu2/function2.hpp"
 
+// TMP
+std::string get_trace(void);
+
 /// Lazy buffer (my bad :)
 /// Proxy class over own internal vector (owning) or external vector/raw buffer (non-owning).
 class wtf_buffer

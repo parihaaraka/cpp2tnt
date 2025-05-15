@@ -94,6 +94,7 @@ void mp_reader::skip(const char **pos) const
 {
     if (!pos || !*pos || *pos >= _end)
         throw mp_reader_error("read out of bounds", *this, _end);
+        //throw mp_reader_error("read out of bounds\n" + get_trace(), *this, _end);
 
     const char *prev = *pos;
     mp_next(pos);

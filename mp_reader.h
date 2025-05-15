@@ -167,6 +167,7 @@ public:
     mp_reader& operator>> (mp_span<maxN> &dst)
     {
         dst._begin = _current_pos;
+        dst._current_pos = _current_pos;
         for (size_t i = 0; i < maxN && has_next(); ++i)
         {
             skip();
