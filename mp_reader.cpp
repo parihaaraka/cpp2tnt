@@ -1,36 +1,11 @@
+#ifndef MP_READER2
+
 #include "mp_reader.h"
 #include "wtf_buffer.h"
 #include "msgpuck/msgpuck.h"
+#include "misc.h"
 
 using namespace std;
-
-std::string hex_dump(const char *begin, const char *end, const char *pos)
-{
-    std::string res;
-    res.reserve(static_cast<size_t>((end - begin)) * 4);
-    constexpr char hexmap[] = {"0123456789abcdef"};
-    int cnt = 0;
-    for (const char* c = begin; c < end; ++c)
-    {
-        ++cnt;
-        char sep = ' ';
-        if (pos)
-        {
-            if (c == pos - 1)
-                sep = '>';
-            else if (c == pos)
-                sep = '<';
-        }
-        res += hexmap[(*c & 0xF0) >> 4];
-        res += hexmap[*c & 0x0F];
-        res += sep;
-        if (cnt % 16 == 0)
-            res += '\n';
-        else if (cnt % 8 == 0)
-            res += ' ';
-    }
-    return res;
-}
 
 string mpuck_type_name(mp_type type)
 {
@@ -382,3 +357,5 @@ mp_array_reader::mp_array_reader(const char *begin, const char *end)
 {
     mp_reader::operator>>(*this);
 }
+
+#endif

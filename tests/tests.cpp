@@ -15,9 +15,9 @@ using namespace boost::ut;
 
 extern std::string hex_dump(const char *begin, const char *end, const char *pos);
 
-template <typename T>
-typename std::enable_if_t<std::is_same_v<T, __int128_t>, mp_reader&>
-operator>> (mp_reader& r, T &val)
+template <typename MP, typename T>
+typename std::enable_if_t<std::is_same_v<T, __int128_t>, mp_reader<MP>&>
+operator>> (mp_reader<MP>& r, T &val)
 {
     // dummy - just to test external operator overloading
     val = 0;
@@ -55,6 +55,7 @@ std::vector<char> hex2bin(string_view hex)
 
 int main(int argc, char *argv[])
 {
+    mp_initialize();
     using namespace std::chrono;
     "wtf_buffer"_test = [] {
         std::vector<char> storage(1);
@@ -95,12 +96,14 @@ int main(int argc, char *argv[])
         tuple<long, long, optional<long>> c;
         vector<int> d;
         map<string, int> e;
-        double f, ff;
+        double f;
+        std::optional<double> ff;
 
         // read 6 items and move current position
         ret_items >> a >> b >> c >> d >> e >> f;
         // skip 5 items and read the 6'th one
-        ret_items_bak >> mp_reader::none() >> mp_reader::none<4>() >> ff;
+        ret_items_bak >> mp_none() >> mp_none<4>();
+        ret_items_bak >> ff;
 
         expect(b == 2);
         expect(c == std::tuple<long, long, optional<long>>{3,4,{}});
@@ -146,6 +149,16 @@ int main(int argc, char *argv[])
         expect(tmp == R"({"name": "UNKNOWN", "fields": {"var1": "payload"}})");
 
         expect(ret_items.read<bool>() == true);
+    };
+
+    "mp_array_reader"_test = [] {
+        auto mp = hex2bin("0102030405");
+        auto r = mp_array_reader(mp.data(), 5);
+        expect(r == true);
+        r >> mp_none<5>();
+        expect(r.has_next() == false);
+        expect(r == true);
+        expect(r.read_or<int>(1) == 1);
     };
 
     scope s = run_loop();
@@ -205,7 +218,7 @@ return
                     auto ret_items = ret_data.read<mp_array_reader>();
                     expect(ret_items.cardinality() == 12_ul);
                     mp_array_reader err_stack;
-                    ret_items >> mp_reader::none<10>() >> err_stack;
+                    ret_items >> mp_none<10>() >> err_stack;
                     //
                     // * The case with the explicitly serialized error object. *
                     //

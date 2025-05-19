@@ -1,3 +1,7 @@
+#ifdef MP_READER2
+#include "mp_reader2.h"
+#else
+
 #ifndef MP_READER_H
 #define MP_READER_H
 
@@ -42,8 +46,6 @@ class mp_map_reader;
 class mp_array_reader;
 class mp_reader;
 template <size_t maxN = 64> class mp_span;
-
-std::string hex_dump(const char *begin, const char *end, const char *pos = nullptr);
 
 /// messagepack parsing error
 class DLL_PUBLIC mp_reader_error : public std::runtime_error
@@ -643,3 +645,5 @@ private:
 };
 
 #endif // MP_READER_H
+
+#endif
