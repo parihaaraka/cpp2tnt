@@ -166,8 +166,9 @@ struct mp_array : public mp_plain
         }
         this->begin = head;
     }
-    // Interpret `begin` as the first item of the array with the specified cardinality.
+    /// Interpret `begin` as the first item of the array with the specified cardinality.
     inline mp_array(const char *begin, size_t cardinality) : mp_plain(begin), cardinality(cardinality){}
+    /// Interpret `begin` as the first item of the array with the specified cardinality.
     inline mp_array(const char *begin, const char *end, size_t cardinality) : mp_plain(begin, end), cardinality(cardinality){}
 
     /// true if not empty
@@ -263,6 +264,10 @@ struct mp_map : public mp_plain
 template <size_t maxN>
 struct mp_span : public mp_array
 {
+    template<typename T>
+    friend class mp_reader;
+
+    mp_span() = default;
     mp_span(const char *begin, const char *end);
     mp_span sub(size_t first_ind, size_t last_ind) const
     {
@@ -309,6 +314,7 @@ class mp_reader
 {
     template<typename T>
     friend class mp_reader;
+
     static_assert(std::derived_from<MP, mp_plain>, "mp_reader operates on mp_plain and its descendants");
 protected:
     MP _mp;
@@ -506,11 +512,12 @@ public:
     /// true if not empty
     operator bool() const noexcept
     {
-        if (_mp.end)
+        return _mp;
+        /*if (_mp.end)
             return _mp.begin && _mp.end > _mp.begin;
         if constexpr (requires {_mp.cardinality;})
             return _mp.begin && _mp.cardinality;
-        return false;
+        return false;*/
     }
 
     /// Returns reader for a value with the specified index.
@@ -635,15 +642,14 @@ public:
     template<size_t maxN>
     mp_reader& operator>> (mp_span<maxN> &dst)
     {
-        dst._mp.begin = _current_pos;
-        dst._current_pos = _current_pos;
+        dst.begin = _current_pos;
         for (size_t i = 0; i < maxN && has_next(); ++i)
         {
             skip();
-            dst._rbounds[i] = _current_pos - dst._mp.begin;
-            ++dst._cardinality;
+            dst.rbounds[i] = _current_pos - dst.begin;
+            ++dst.cardinality;
         }
-        dst._mp.end = _current_pos;
+        dst.end = _current_pos;
         return *this;
     }
 
@@ -721,7 +727,7 @@ public:
     }
 
     template <typename T>
-    T read_or(T &&def)
+    T read_or(const T &def)
     {
         if (!has_next(true))
             return def;

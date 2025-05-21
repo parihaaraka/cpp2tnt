@@ -7,8 +7,6 @@ set(CMAKE_COLOR_MAKEFILE   ON)
 
 add_subdirectory(third_party/msgpuck)
 
-add_compile_definitions(MP_READER2)
-
 set (CMAKE_CXX_STANDARD 20)
 file(GLOB LIB_FILES *.cpp third_party/*.c)
 if(NOT DEFINED CPP2TNT_LIBEV)

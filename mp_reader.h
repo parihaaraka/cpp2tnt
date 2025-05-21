@@ -1,4 +1,4 @@
-#ifdef MP_READER2
+#ifndef OLD_MP_READER
 #include "mp_reader2.h"
 #else
 
@@ -643,6 +643,17 @@ private:
     /// end of items offsets
     std::array<uint32_t, maxN> _rbounds;
 };
+
+template <size_t N = 1>
+mp_reader::none_t<N> mp_none()
+{
+    return mp_reader::none_t<N>();
+}
+
+inline void mp_initialize()
+{
+    mp_reader::initialize();
+}
 
 #endif // MP_READER_H
 

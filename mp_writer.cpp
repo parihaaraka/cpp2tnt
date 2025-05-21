@@ -1,6 +1,6 @@
 #include "msgpuck/msgpuck.h"
 #include "mp_writer.h"
-#include "mp_reader2.h"
+#include "mp_reader.h"
 
 using namespace std;
 
@@ -109,8 +109,9 @@ void mp_writer::increment_container_counter(size_t items_added)
 void mp_writer::write(const char *begin, const char *end, size_t cardinality)
 {
     // make sure the destination has free space
-    copy(begin, end, _buf.end);
+    auto dst = _buf.end;
     _buf.resize(_buf.size() + end - begin);
+    std::copy(begin, end, dst);
 
     if (!_opened_containers.empty())
     {

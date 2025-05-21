@@ -111,6 +111,17 @@ public:
         return *this;
     }
 
+#ifndef OLD_MP_READER
+    template<typename MP>
+    inline mp_writer& operator<< (mp_reader<MP> &r)
+    {
+        auto begin = r.pos();
+        r.skip();
+        *this << mp_raw_view(begin, r.pos() - begin);
+        return *this;
+    }
+#endif
+
     inline mp_writer& operator<< (const mp_raw_view &val)
     {
         write(val.data(), val.data() + val.size(), val.cardinality());
@@ -227,7 +238,7 @@ public:
     template<size_t maxN>
     mp_writer& operator<< (const mp_span<maxN> &src)
     {
-        write(src.begin(), src.end(), src.cardinality());
+        write(src.begin, src.end, src.cardinality);
         return *this;
     }
 
@@ -300,6 +311,30 @@ protected:
 
     wtf_stack<container_meta> _opened_containers;
     wtf_buffer &_buf;
+};
+
+template <size_t S>
+class mp_stack_writer : public mp_writer
+{
+public:
+    using mp_writer::mp_writer;
+    constexpr mp_stack_writer() : mp_writer(wbuf), wbuf(buf, S) {}
+    mp_stack_writer(wtf_buffer &buf) = delete;
+    const char* data() const
+    {
+        return buf;
+    }
+    const char* pos() const
+    {
+        return wbuf.end;
+    }
+    size_t size() const
+    {
+        return wbuf.end - buf;
+    }
+private:
+    char buf[S];
+    wtf_buffer wbuf;
 };
 
 #endif // MP_WRITER_H

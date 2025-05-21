@@ -1,4 +1,4 @@
-#ifndef MP_READER2
+#ifdef OLD_MP_READER
 
 #include "mp_reader.h"
 #include "wtf_buffer.h"
