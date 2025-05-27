@@ -308,6 +308,14 @@ protected:
 template <std::size_t N = 1>
 struct mp_none {};
 
+template <typename T>
+struct mp_optional
+{
+    mp_optional(T &dst, const T &def) : dst(dst), def(def) {}
+    T &dst;
+    const T &def;
+};
+
 /// messagepack reader
 template<typename MP = mp_plain>
 class mp_reader
@@ -722,6 +730,25 @@ public:
             T non_opt;
             *this >> non_opt;
             val = std::move(non_opt);
+        }
+        return *this;
+    }
+
+    template <typename T>
+    mp_reader& operator>> (mp_optional<T> &&val)
+    {
+        if (!has_next(true))
+        {
+            val.dst = val.def;
+        }
+        else if (mp_typeof(*_current_pos) == MP_NIL)
+        {
+            skip();
+            val.dst = val.def;
+        }
+        else
+        {
+            *this >> val.dst;
         }
         return *this;
     }

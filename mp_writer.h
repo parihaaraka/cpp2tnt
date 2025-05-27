@@ -128,10 +128,12 @@ public:
         return *this;
     }
 
-    //inline mp_writer& operator<< (const char val[])
-    //{
-    //    *this << std::string_view{val, sizeof(val)};
-    //}
+    template <size_t S>
+    mp_writer& operator<< (const char (&val)[S])
+    {
+        *this << std::string_view{val, S - 1};
+        return *this;
+    }
 
     template <typename T>
     mp_writer& operator<< (const std::optional<T> &val) noexcept
