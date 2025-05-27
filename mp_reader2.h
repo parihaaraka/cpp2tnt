@@ -1057,7 +1057,7 @@ std::string hex_dump_mp(const MP &mp, const char *pos)
             mp_reader tmp(mp);
             for (size_t i = 0; i < mp.cardinality; ++i)
                 tmp.skip();
-            return hex_dump(mp.begin, tmp.end, pos);
+            return hex_dump(mp.begin, tmp.pos(), pos);
         }
     }
     return {};
