@@ -135,6 +135,12 @@ public:
         return *this;
     }
 
+    mp_writer& operator<< (const char *val)
+    {
+        *this << std::string_view{val};
+        return *this;
+    }
+
     template <typename T>
     mp_writer& operator<< (const std::optional<T> &val) noexcept
     {
