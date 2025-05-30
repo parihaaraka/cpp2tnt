@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.10)
+cmake_minimum_required(VERSION 3.16)
 
 project(cpp2tnt C CXX)
 
@@ -15,6 +15,7 @@ if(NOT DEFINED CPP2TNT_LIBEV)
 endif()
 
 add_library(${PROJECT_NAME} STATIC ${LIB_FILES})
+set_property(TARGET ${PROJECT_NAME} PROPERTY POSITION_INDEPENDENT_CODE ON)
 target_include_directories(${PROJECT_NAME} PUBLIC . third_party)
 target_link_libraries(${PROJECT_NAME} msgpuck)
 

@@ -326,11 +326,11 @@ class mp_stack_writer : public mp_writer
 {
 public:
     using mp_writer::mp_writer;
-    constexpr mp_stack_writer() : mp_writer(wbuf), wbuf(buf, S) {}
+    constexpr mp_stack_writer() : mp_writer(wbuf), wbuf(_buf, S) {}
     mp_stack_writer(wtf_buffer &buf) = delete;
     const char* data() const
     {
-        return buf;
+        return _buf;
     }
     const char* pos() const
     {
@@ -338,10 +338,10 @@ public:
     }
     size_t size() const
     {
-        return wbuf.end - buf;
+        return wbuf.end - _buf;
     }
 private:
-    char buf[S];
+    char _buf[S];
     wtf_buffer wbuf;
 };
 
