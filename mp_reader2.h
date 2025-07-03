@@ -87,14 +87,12 @@ struct mp_plain
     inline mp_plain(const wtf_buffer &buf) : mp_plain(buf.data(), buf.end) {}
     inline mp_plain(const std::vector<char> &buf)
         : mp_plain(buf.data(), buf.data() + buf.size()){}
-    inline mp_plain(const char *begin = nullptr, const char *end = nullptr)
-    {
-        this->begin = begin;
-        this->end = end;
-    }
+    inline constexpr mp_plain(const char *begin = nullptr, const char *end = nullptr)
+        : begin(begin), end(end)
+    {}
 
     /// true if not empty
-    inline operator bool() const noexcept
+    inline constexpr operator bool() const noexcept
     {
         if (end)
             return begin && end > begin;
@@ -267,25 +265,37 @@ struct mp_span : public mp_array
     template<typename T>
     friend class mp_reader;
 
+    template <size_t innerMaxN>
+    friend class mp_span;
+
     mp_span() = default;
     mp_span(const char *begin, const char *end);
-    mp_span sub(size_t first_ind, size_t last_ind) const
+    /// extract [first_ind, last_ind] span
+    template<size_t maxResN = maxN>
+    const mp_span<maxResN> sub(size_t first_ind, size_t last_ind) const
     {
+        static_assert(maxResN <= maxN);
         if (first_ind > last_ind)
             throw mp_reader_error("first_ind > last_ind", *this);
         if (last_ind >= cardinality)
             throw mp_reader_error("read out of bounds", *this);
-        return mp_span<maxN>(begin + (first_ind ? rbounds[first_ind - 1] : 0),
+        return mp_span<maxResN>(begin + (first_ind ? rbounds[first_ind - 1] : 0),
                              begin + rbounds[last_ind],
                              last_ind - first_ind + 1,
                              &rbounds[first_ind]);
     }
 
-    /// Return mp_plain for a value with the specified index.
-    /// Throws if the key is not found.
-    mp_plain operator[](size_t i) const
+    /// Returns mp_plain for a value with the specified index.
+    /// Returns nil msgpack value if the index is out of bounds
+    /// (useful for accessing tail nullable fields being truncated).
+    const mp_plain operator[](size_t i) const
     {
-        return sub(i, i);
+        if (cardinality <= i)
+        {
+            static const char mp_nil[] = "\xc0";
+            return {mp_nil, mp_nil + 1};
+        }
+        return sub<1>(i, i);
     }
 
     template <size_t maxArgN>
@@ -934,7 +944,7 @@ public:
     }
 
     template <size_t maxN>
-    mp_span<maxN> read()
+    const mp_span<maxN> read()
     {
         mp_span<maxN> dst{};
         *this >> dst;

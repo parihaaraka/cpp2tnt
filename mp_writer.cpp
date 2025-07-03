@@ -162,3 +162,11 @@ mp_writer& mp_writer::operator<<(const string_view &val)
     increment_container_counter();
     return *this;
 }
+
+mp_writer& mp_writer::operator<<(const mp_plain &src)
+{
+    mp_reader r(src);
+    while (r.has_next(true))
+        *this << r;
+    return *this;
+}

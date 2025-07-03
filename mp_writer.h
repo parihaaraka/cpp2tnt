@@ -250,6 +250,8 @@ public:
         return *this;
     }
 
+    mp_writer& operator<< (const mp_plain &src);
+
     template <typename T>
     mp_writer& operator<< (const std::vector<T> &val)
     {
@@ -319,6 +321,30 @@ protected:
 
     wtf_stack<container_meta> _opened_containers;
     wtf_buffer &_buf;
+
+public:
+    struct state
+    {
+        friend class mp_writer;
+        inline state(size_t len, const wtf_stack<container_meta> &c) : content_len(len), opened_containers(c) {};
+    private:
+        size_t content_len = 0;
+        wtf_stack<container_meta> opened_containers;
+    };
+
+    /// Save mp_writer state and restore it with `set_state()` to undo some last writes.
+    state get_state()
+    {
+        return state{_buf.size(), _opened_containers};
+    }
+    void set_state(const state &state)
+    {
+        if (_buf.capacity() >= state.content_len)
+            _buf.end = _buf.data() + state.content_len;
+        else
+            throw std::overflow_error("destination buffer was truncated");
+        _opened_containers = state.opened_containers;
+    }
 };
 
 template <size_t S>
