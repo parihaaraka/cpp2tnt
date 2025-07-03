@@ -1,9 +1,4 @@
-#ifndef OLD_MP_READER
-#include "mp_reader2.h"
-#else
-
-#ifndef MP_READER_H
-#define MP_READER_H
+#pragma once
 
 #include <chrono>
 #include <cstddef>
@@ -15,6 +10,8 @@
 #include <charconv>
 #include "msgpuck/ext_tnt.h"
 #include "msgpuck/msgpuck.h"
+#include "wtf_buffer.h"
+#include "misc.h"
 
 #if defined _WIN32 || defined __CYGWIN__
   #ifdef BUILDING_DLL
@@ -42,123 +39,618 @@
 #endif
 
 class wtf_buffer;
-class mp_map_reader;
-class mp_array_reader;
-class mp_reader;
-template <size_t maxN = 64> class mp_span;
+class mp_reader_error;
+struct mp_plain;
 
-/// messagepack parsing error
+/// Initialize mp_reader environment. It overrides ext types print functions for now.
+inline void mp_initialize()
+{
+    mp_snprint_ext = mp_snprint_ext_tnt;
+    mp_fprint_ext = mp_fprint_ext_tnt;
+}
+
+inline std::string mpuck_type_name(mp_type type)
+{
+    switch (type)
+    {
+    case MP_NIL:
+        return "nil";
+    case MP_UINT:
+        return "uint";
+    case MP_INT:
+        return "int";
+    case MP_STR:
+        return "string";
+    case MP_BIN:
+        return "bin";
+    case MP_ARRAY:
+        return "array";
+    case MP_MAP:
+        return "map";
+    case MP_BOOL:
+        return "bool";
+    case MP_FLOAT:
+        return "float";
+    case MP_DOUBLE:
+        return "double";
+    case MP_EXT:
+        return "ext";
+    }
+    return "MPUCK:" + std::to_string(static_cast<int>(type));
+}
+
+template <typename MP>
+std::string hex_dump_mp(const MP &mp, const char *pos);
+
+struct mp_plain
+{
+    inline mp_plain(const wtf_buffer &buf) : mp_plain(buf.data(), buf.end) {}
+    inline mp_plain(const std::vector<char> &buf)
+        : mp_plain(buf.data(), buf.data() + buf.size()){}
+    inline constexpr mp_plain(const char *begin = nullptr, const char *end = nullptr)
+        : begin(begin), end(end)
+    {}
+
+    /// true if not empty
+    inline constexpr operator bool() const noexcept
+    {
+        if (end)
+            return begin && end > begin;
+        return false;
+    }
+
+    const char *begin = nullptr;
+    const char *end = nullptr;
+};
+
+/// msgpack parsing error
 class DLL_PUBLIC mp_reader_error : public std::runtime_error
 {
 public:
-    explicit mp_reader_error(const std::string &msg, const mp_reader &reader, const char *pos = nullptr);
+    inline mp_reader_error(const std::string &msg, const mp_plain &reader, const char *pos = nullptr)
+        : runtime_error(msg + '\n' + hex_dump_mp(reader, pos)) {}
 };
 
 #undef DLL_PUBLIC
 #undef DLL_LOCAL
 
-std::string mpuck_type_name(mp_type type);
-
-/// messagepack reader
-class mp_reader
+struct mp_array : public mp_plain
 {
-public:
-    mp_reader(const wtf_buffer &buf);
-    mp_reader(const std::vector<char> &buf);
-    mp_reader(const char *begin = nullptr, const char *end = nullptr);
-
-    template <std::size_t N = 1>
-    class none_t {};
-
-    template <std::size_t N = 1>
-    static none_t<N> none()
+    mp_array() = default;
+    inline mp_array(const wtf_buffer &buf) : mp_array(buf.data(), buf.end) {};
+    inline mp_array(const char *begin, const char *end = nullptr) : mp_plain(begin, end)
     {
-        return none_t<N>();
+        if (!begin)
+            return;
+
+        auto head = begin;
+        auto type = mp_typeof(*head);
+        if (type == MP_ARRAY)
+        {
+            cardinality = mp_decode_array(&head);
+        }
+        else if (type == MP_EXT)
+        {
+            int8_t ext_type = 0;
+            mp_decode_extl(&head, &ext_type);
+            if (ext_type == MP_ERROR) // extract error stack
+            {
+                // https://www.tarantool.io/en/doc/2.11/dev_guide/internals/msgpack_extensions/#the-error-type
+                // acquire key 0 value from the topmost map
+                uint32_t i = mp_decode_map(&head);
+                while (i--)
+                {
+                    uint32_t key = mp_decode_uint(&head);
+                    auto value_pos = head;
+                    if (key == 0x00) // stack
+                    {
+                        cardinality = mp_decode_array(&head);
+                        mp_next(&value_pos);
+                        this->end = value_pos;
+                        this->begin = head;
+                        return;
+                    }
+                }
+                throw mp_reader_error("MP_ERROR_STACK not found within ext error", *this, head);
+            }
+            else
+            {
+                throw mp_reader_error("unable to read map from ext type " + std::to_string(type), *this, head);
+            }
+        }
+        else
+        {
+            throw mp_reader_error("array expected, got " + mpuck_type_name(type), *this, head);
+        }
+        this->begin = head;
     }
-
-    inline const char* begin() const noexcept
-    {
-        return _begin;
-    }
-
-    inline const char* end() const noexcept
-    {
-        return _end;
-    }
-
-    inline const char* pos() const noexcept
-    {
-        return _current_pos;
-    }
-
-    /// Skip current encoded item (in case of array/map skips all its elements) and check content.
-    inline void skip()
-    {
-        skip(&_current_pos);
-    }
-
-    inline size_t size() const
-    {
-        return _end - _begin;
-    }
-
-    /// Initialize mp_reader environment. It overrides ext types print functions for now.
-    static void initialize();
-
-    /// Skip MsgPack item pointed by pos (within current buffer)
-    void skip(const char **pos) const;
-    /// Skip current encoded item and ensure it has expected type.
-    void skip(mp_type type, bool nullable = false);
-
-    /// Interpret any item as an array via mp_array_reader (?!).
-    /// Bad try to simpify things... You'd better don't use it :)
-    [[deprecated]] mp_array_reader as_array(size_t ind = 0) const;
-
-    /// Return current encoded iproto message (header + body) within separate reader
-    /// and move current position to next item.
-    mp_reader iproto_message();
-
-    /// Extract and serialize value to string (nil -> 'null') and move current position to next item.
-    std::string to_string(uint32_t flags = 0);
-
-    /// Validate MsgPack within current buffer (all items)
-    void check() const;
-
-    /// Reset current reading position back to the beginning.
-    inline void rewind() noexcept
-    {
-        _current_pos = _begin;
-    }
-
-    /// Return true if current value is nil.
-    inline bool is_null() const
-    {
-        return mp_typeof(*_current_pos) == MP_NIL;
-    }
-
-    /// true if msgpack has more values to read
-    inline bool has_next() const noexcept
-    {
-        return _current_pos && _end && _current_pos < _end;
-    }
+    /// Interpret `begin` as the first item of the array with the specified cardinality.
+    inline mp_array(const char *begin, size_t cardinality) : mp_plain(begin), cardinality(cardinality){}
+    /// Interpret `begin` as the first item of the array with the specified cardinality.
+    inline mp_array(const char *begin, const char *end, size_t cardinality) : mp_plain(begin, end), cardinality(cardinality){}
 
     /// true if not empty
     inline operator bool() const noexcept
     {
-        return _begin && _end && _end > _begin;
+        if (end)
+            return begin && end > begin;
+        return begin && cardinality;
     }
 
-    /// Return reader for a value with the specified index.
+    /// Return mp_plain for a value with the specified index.
+    mp_plain operator[](size_t i) const
+    {
+        auto pos = begin;
+        const char *prev_pos = pos;
+        while (i-- >= 0)
+        {
+            prev_pos = pos;
+            mp_next(&pos);
+        }
+        return {prev_pos, pos};
+    }
+
+    size_t cardinality = 0;
+};
+
+struct mp_map : public mp_plain
+{
+    mp_map() = default;
+    inline mp_map(const char *begin, const char *end = nullptr) : mp_plain(begin, end)
+    {
+        auto head = begin;
+        auto type = mp_typeof(*head);
+        if (type == MP_MAP)
+        {
+            cardinality = mp_decode_map(&head);
+        }
+        else if (type == MP_EXT)
+        {
+            int8_t ext_type = 0;
+            mp_decode_extl(&head, &ext_type);
+            if (ext_type == MP_INTERVAL)
+            {
+                // https://www.tarantool.io/en/doc/2.11/dev_guide/internals/msgpack_extensions/#the-interval-type
+                cardinality = mp_decode_uint(&head);
+            }
+            else if (ext_type == MP_ERROR)  // acquire error container (map with key 0x31 (PROTO_ERROR_24) and optional 0x52 (IPROTO_ERROR))
+            {
+                cardinality = mp_decode_map(&head);
+            }
+            else
+            {
+                throw mp_reader_error("unable to read map from ext type " + std::to_string(type), *this, head);
+            }
+        }
+        else
+        {
+            throw mp_reader_error("map expected, got " + mpuck_type_name(type), *this, head);
+        }
+        this->begin = head;
+    }
+    // Interpret `begin` as the first pair of the map with the specified cardinality (items*2).
+    inline mp_map(const char *begin, size_t cardinality) : mp_plain(begin), cardinality(cardinality){}
+    inline mp_map(const char *begin, const char *end, size_t cardinality) : mp_plain(begin, end), cardinality(cardinality){}
+
+    /// true if not empty
+    inline operator bool() const noexcept
+    {
+        if (end)
+            return begin && end > begin;
+        return begin && cardinality;
+    }
+
+    /// Return mp_plain for a value with the specified key.
+    /// Returns mp_plain reader if the key is not found.
+    template <typename T>
+    mp_plain find(const T &key) const;
+
+    /// Return mp_plain for a value with the specified key.
+    /// Throws if the key is not found.
+    template <typename T>
+    mp_plain operator[](const T &key) const
+    {
+        mp_plain res = find(key);
+        if (!res)
+            throw mp_reader_error("key not found", *this);
+        return res;
+    }
+
+    size_t cardinality = 0;
+};
+
+template <size_t maxN>
+struct mp_span : public mp_array
+{
+    template<typename T>
+    friend class mp_reader;
+
+    template <size_t innerMaxN>
+    friend class mp_span;
+
+    mp_span() = default;
+    mp_span(const char *begin, const char *end);
+    /// extract [first_ind, last_ind] span
+    template<size_t maxResN = maxN>
+    const mp_span<maxResN> sub(size_t first_ind, size_t last_ind) const
+    {
+        static_assert(maxResN <= maxN);
+        if (first_ind > last_ind)
+            throw mp_reader_error("first_ind > last_ind", *this);
+        if (last_ind >= cardinality)
+            throw mp_reader_error("read out of bounds", *this);
+        return mp_span<maxResN>(begin + (first_ind ? rbounds[first_ind - 1] : 0),
+                             begin + rbounds[last_ind],
+                             last_ind - first_ind + 1,
+                             &rbounds[first_ind]);
+    }
+
+    /// Returns mp_plain for a value with the specified index.
+    /// Returns nil msgpack value if the index is out of bounds
+    /// (useful for accessing tail nullable fields being truncated).
+    const mp_plain operator[](size_t i) const
+    {
+        if (cardinality <= i)
+        {
+            static const char mp_nil[] = "\xc0";
+            return {mp_nil, mp_nil + 1};
+        }
+        return sub<1>(i, i);
+    }
+
+    template <size_t maxArgN>
+    bool operator== (const mp_span<maxArgN>& s) const
+    {
+        if (*this && s && (end - begin) == (s.end - s.begin))
+            return memcmp(begin, s.begin(), s.end - s.begin) == 0;
+        return false;
+    }
+
+protected:
+    std::array<uint32_t, maxN> rbounds;
+    mp_span(const char *begin, const char *end, size_t cardinality, const uint32_t *first_rbound)
+        : mp_array(begin, end, cardinality)
+    {
+        std::copy(first_rbound, first_rbound + cardinality, (uint32_t*)rbounds.data());
+    };
+};
+
+template <std::size_t N = 1>
+struct mp_none {};
+
+template <typename T>
+struct mp_optional
+{
+    mp_optional(T &dst, const T &def) : dst(dst), def(def) {}
+    T &dst;
+    const T &def;
+};
+
+/// messagepack reader
+template<typename MP = mp_plain>
+class mp_reader
+{
+    template<typename T>
+    friend class mp_reader;
+
+    static_assert(std::derived_from<MP, mp_plain>, "mp_reader operates on mp_plain and its descendants");
+protected:
+    MP _mp;
+    const char *_current_pos = nullptr;
+    uint32_t _current_ind = 0;
+
+public:
+    mp_reader(MP mp) : _mp(mp), _current_pos(_mp.begin) {}
+
+    mp_reader(const wtf_buffer &buf) : mp_reader(buf.data(), buf.end) {};
+    mp_reader(const std::vector<char> &buf) : mp_reader(buf.data(), buf.data() + buf.size()) {};
+
+    template<typename ...Args>
+    mp_reader(Args... args) : _mp(args ...), _current_pos(_mp.begin)
+    {
+    }
+
+    MP content() const noexcept
+    {
+        return _mp;
+    }
+
+    const char* begin() const noexcept
+    {
+        return _mp.begin;
+    }
+
+    const char* end() const noexcept
+    {
+        return _mp.end;
+    }
+
+    size_t size() const
+    {
+        return _mp.end - _mp.begin;
+    }
+
+    const char* pos() const noexcept
+    {
+        return _current_pos;
+    }
+
+    uint32_t ind() const noexcept
+    {
+        return _current_ind;
+    }
+
+    /// Cardinality of the array or map.
+    size_t cardinality() const noexcept
+        requires (std::is_same<MP, mp_array>::value || std::is_same<MP, mp_map>::value)
+    {
+        return _mp.cardinality;
+    }
+
+    /// Skip current encoded item (in case of array/map skips all its elements).
+    mp_reader& skip()
+    {
+        if (!_current_pos || (_mp.end && _current_pos >= _mp.end))
+            throw mp_reader_error("read out of bounds", _mp, _mp.end);
+
+        if constexpr (requires {_mp.cardinality;})
+        {
+            size_t c = _mp.cardinality;
+            if constexpr (std::is_same<MP, mp_map>::value)
+                c = c * 2;
+            if (_current_ind >= c)
+                throw mp_reader_error("read out of bounds", _mp, _current_pos);
+        }
+
+        const char *prev = _current_pos;
+        mp_next(&_current_pos);
+        if (_mp.end && _current_pos > _mp.end)
+        {
+            _current_pos = prev;
+            throw mp_reader_error("invalid messagepack", _mp, prev);
+        }
+        ++_current_ind;
+        return *this;
+    }
+
+    /// Skip current encoded item and ensure it has expected type.
+    mp_reader& skip(mp_type type, bool nullable = false)
+    {
+        auto actual_type = mp_typeof(*_current_pos);
+        if (actual_type != type && (!nullable || actual_type != MP_NIL))
+            throw mp_reader_error(mpuck_type_name(type) + " expected, got " + mpuck_type_name(actual_type), _mp, _current_pos);
+        return skip();
+    }
+
+    /// Return current encoded iproto message (header + body) within separate reader
+    /// and move current position to next item.
+    mp_reader iproto_message()
+    {
+        if (_mp.end - _current_pos < 5)
+            return {_current_pos, _current_pos}; // empty object
+
+        if (static_cast<uint8_t>(*_current_pos) != 0xce)
+            throw mp_reader_error("invalid iproto packet", _mp);
+
+        uint64_t response_size = mp_decode_uint(&_current_pos);
+        if (static_cast<uint64_t>(_mp.end - _current_pos) < response_size)
+            throw mp_reader_error("partial iproto packet", _mp);
+
+        auto head = _current_pos;
+        _current_pos += response_size;
+        return mp_reader{mp_plain{head, _current_pos}};
+    }
+
+    /// Extract and serialize value to string (nil -> 'null') and move current position to next item.
+    std::string to_string(uint32_t flags = 0)
+    {
+        const char *data = _current_pos;
+        skip();
+
+        std::string res(256, '\0');
+        int cnt = mp_snprint(res.data(), static_cast<int>(res.size()), data, flags);
+        if (cnt >= static_cast<int>(res.size()))
+        {
+            res.resize(static_cast<size_t>(cnt + 1));
+            cnt = mp_snprint(res.data(), static_cast<int>(res.size()), data, flags);
+        }
+        if (cnt < 0)
+            throw mp_reader_error("mp_snprint error", _mp, data);
+        res.resize(static_cast<size_t>(cnt));
+        return res;
+    }
+
+    /// Validate next MsgPack item and check right bound if known
+    inline void check_next() const
+    {
+        if (!_current_pos)
+            return;
+        if (!_mp.end)
+            throw mp_reader_error("right bound is not specified", _mp);
+
+        if (_current_pos >= _mp.end)
+            throw mp_reader_error("read out of bounds", _mp, _current_pos);
+        auto pos = _current_pos;
+        if (mp_check(&pos, _mp.end))
+            throw mp_reader_error("invalid messagepack", _mp, _current_pos);
+    }
+
+    /// Validate MsgPack within current buffer (all items)
+    void check() const
+    {
+        if (!_mp.begin)
+            return;
+        if (!_mp.end)
+            throw mp_reader_error("right bound is not specified", *this);
+        auto pos = _mp.begin;
+        while (pos < _mp.end)
+        {
+            const char *prev = pos;
+            if (mp_check(&pos, _mp.end))
+                throw mp_reader_error("invalid messagepack", *this, prev);
+        }
+    }
+
+    /// Reset the current reading position back to the beginning.
+    void rewind() noexcept
+    {
+        _current_pos = _mp.begin;
+        _current_ind = 0;
+    }
+
+    /// Return true if the current value is `nil`.
+    bool is_null() const
+    {
+        if (!has_next())
+            throw mp_reader_error("read out of bounds", _mp, _current_pos);
+
+        return mp_typeof(*_current_pos) == MP_NIL;
+    }
+
+    /// Returns `true` if msgpack has more values to read. Pass `true` as an argument to throw an exception
+    /// when the possibility is unknown.
+    bool has_next(bool strict = false) const
+    {
+        if (_mp.end)
+            return _current_pos && _current_pos < _mp.end;
+        if constexpr (requires {_mp.cardinality;})
+        {
+            if constexpr (std::is_same<MP, mp_map>::value)
+                return _current_pos && _current_ind < _mp.cardinality * 2;
+            else
+                return _current_pos && _current_ind < _mp.cardinality;
+        }
+
+        // allow to read at one's risk
+        if (!strict)
+            return true;
+        throw mp_reader_error("unable to determine if next value exists - no right bound specified", _mp, _current_pos);
+    }
+
+    /// true if not empty
+    operator bool() const noexcept
+    {
+        return _mp;
+        /*if (_mp.end)
+            return _mp.begin && _mp.end > _mp.begin;
+        if constexpr (requires {_mp.cardinality;})
+            return _mp.begin && _mp.cardinality;
+        return false;*/
+    }
+
+    /// Returns reader for a value with the specified index.
     /// Current parsing position stays unchanged. Throws if the specified index is out of bounds.
-    mp_reader operator[](size_t ind) const;
+    mp_reader<mp_plain> operator[](size_t ind) const
+        requires (!std::is_same<MP, mp_map>::value)
+    {
+        if constexpr (requires {_mp.rbounds;})
+            return {_mp[ind]};
 
-    mp_reader& operator>> (std::string &val);
-    mp_reader& operator>> (std::string_view &val);
-    mp_reader& operator>> (bool &val);
+        size_t i = 0;
+        auto tmp = *this;
+        if (_current_ind <= ind)
+            i = _current_ind;
+        else
+            tmp.rewind();
 
-    /// Use >> mp_reader::none() to skip a value or mp_reader::none<N>() to skip N items
+        for (; i < ind; ++i)
+            tmp.skip();
+
+        auto begin = tmp._current_pos;
+        tmp.skip();
+        return {mp_plain{begin, tmp._current_pos}};
+    }
+
+    /// Return `mp_reader<mp_plain>` for a value with the specified key.
+    /// Current parsing position stays unchanged. Throws if the key is not found.
+    template <typename T>
+    mp_reader<mp_plain> operator[](const T &key) const
+        requires (std::is_same<MP, mp_map>::value)
+    {
+        return {_mp[key]};
+    }
+
+    template <typename T>
+    mp_reader<mp_plain> find(const T &key) const
+        requires (std::is_same<MP, mp_map>::value)
+    {
+        return {_mp.find(key)};
+    }
+
+    mp_reader& operator>> (std::string &val)
+    {
+        if (mp_typeof(*_current_pos) == MP_EXT)
+        {
+            // regular print
+            if (val.size() < 128)
+                val.resize(128, '\0');
+            size_t len = mp_snprint(val.data(), val.size(), _current_pos, UNQUOTE_UUID);
+            if (len > val.size())
+            {
+                val.resize(len + 1, '\0');
+                len = mp_snprint(val.data(), len + 1, _current_pos, UNQUOTE_UUID);
+            }
+            if (len < 0)
+                throw mp_reader_error("bad ext value content", _mp, _current_pos);
+            val.resize(len);
+            skip();
+        }
+        else
+        {
+            std::string_view tmp;
+            *this >> tmp;
+            if (!tmp.data())
+                throw mp_reader_error("string expected, got no data", _mp);
+            val.assign(tmp.data(), tmp.size());
+        }
+        return *this;
+    }
+
+    mp_reader& operator>> (std::string_view &val)
+    {
+        // for the sake of convenience
+        if (!has_next())
+        {
+            val = {};
+            return *this;
+        }
+
+        auto type = mp_typeof(*_current_pos);
+        if (type == MP_STR)
+        {
+            const char *prev = _current_pos;
+            uint32_t len = 0;
+            skip();
+            const char *value = mp_decode_str(&prev, &len);
+            val = {value, len};
+        }
+        else if (type == MP_NIL)
+        {
+            skip();
+            val = {}; // data() == nullptr
+        }
+        else
+        {
+            throw mp_reader_error("string expected, got " + mpuck_type_name(type), _mp, _current_pos);
+        }
+        return *this;
+    }
+
+    mp_reader& operator>> (bool &val)
+    {
+        const char *data = _current_pos;
+        auto type = mp_typeof(*data);
+        if (type != MP_BOOL)
+            throw mp_reader_error("boolean expected, got " + mpuck_type_name(type), _mp, _current_pos);
+
+        val = mp_decode_bool(&data);
+        skip();
+        return *this;
+    }
+
+    /// Use `>> mp_none()` to skip a value or `>> mp_none<N>()` to skip N items
     template<size_t N = 1>
-    mp_reader& operator>> (none_t<N>)
+    mp_reader& operator>> (mp_none<N>)
     {
         for (int i = 0; i < N; ++i)
             skip();
@@ -168,15 +660,14 @@ public:
     template<size_t maxN>
     mp_reader& operator>> (mp_span<maxN> &dst)
     {
-        dst._begin = _current_pos;
-        dst._current_pos = _current_pos;
+        dst.begin = _current_pos;
         for (size_t i = 0; i < maxN && has_next(); ++i)
         {
             skip();
-            dst._rbounds[i] = _current_pos - dst._begin;
-            ++dst._cardinality;
+            dst.rbounds[i] = _current_pos - dst.begin;
+            ++dst.cardinality;
         }
-        dst._end = _current_pos;
+        dst.end = _current_pos;
         return *this;
     }
 
@@ -207,9 +698,9 @@ public:
             uint32_t len = mp_decode_extl(&data, &ext_type);
 
             if (ext_type != MP_DATETIME)
-                throw mp_reader_error("unable to extract time_point from " + mpuck_type_name(type), *this, data);
+                throw mp_reader_error("unable to extract time_point from " + mpuck_type_name(type), _mp, data);
             if (len != sizeof(int64_t) && len != sizeof(int64_t) + sizeof(tail))
-                throw mp_reader_error("unexpected MP_DATETIME value", *this, data);
+                throw mp_reader_error("unexpected MP_DATETIME value", _mp, data);
 
             int64_t epoch;
             memcpy(&epoch, data, sizeof(epoch));
@@ -226,7 +717,7 @@ public:
             break;
         }
         default:
-            throw mp_reader_error("unable to get time_point from " + mpuck_type_name(type), *this, _current_pos);
+            throw mp_reader_error("unable to get time_point from " + mpuck_type_name(type), _mp, _current_pos);
         }
 
         return *this;
@@ -235,7 +726,7 @@ public:
     template <typename T>
     mp_reader& operator>> (std::optional<T> &val)
     {
-        if (_current_pos >= _end)
+        if (!has_next(true))
         {
             val = std::nullopt;
         }
@@ -251,6 +742,40 @@ public:
             val = std::move(non_opt);
         }
         return *this;
+    }
+
+    template <typename T>
+    mp_reader& operator>> (mp_optional<T> &&val)
+    {
+        if (!has_next(true))
+        {
+            val.dst = val.def;
+        }
+        else if (mp_typeof(*_current_pos) == MP_NIL)
+        {
+            skip();
+            val.dst = val.def;
+        }
+        else
+        {
+            *this >> val.dst;
+        }
+        return *this;
+    }
+
+    template <typename T>
+    T read_or(const T &def)
+    {
+        if (!has_next(true))
+            return def;
+
+        if (mp_typeof(*_current_pos) == MP_NIL)
+        {
+            skip();
+            return def;
+        }
+
+        return read<T>();
     }
 
     // use external operator overload for 128 bit integers
@@ -272,10 +797,10 @@ public:
                 return *this;
 
             if (ec == std::errc::invalid_argument)
-                throw mp_reader_error("not a number", *this, prev_pos);
+                throw mp_reader_error("not a number", _mp, prev_pos);
             else if (ec == std::errc::result_out_of_range)
-                throw mp_reader_error("out of range", *this, prev_pos);
-            throw mp_reader_error("error parsing number", *this, prev_pos);
+                throw mp_reader_error("out of range", _mp, prev_pos);
+            throw mp_reader_error("error parsing number", _mp, prev_pos);
         };
 
         auto type = mp_typeof(*data);
@@ -292,7 +817,7 @@ public:
                 if constexpr (std::is_same_v<T, float>)
                 {
                     if (std::isfinite(res) && (res > std::numeric_limits<T>::max() || res < std::numeric_limits<T>::min()))
-                        throw mp_reader_error("value overflow", *this);
+                        throw mp_reader_error("value overflow", _mp);
                 }
                 val = static_cast<T>(res);
                 return *this;
@@ -301,7 +826,7 @@ public:
             {
                 return ext_via_string();
             }
-            throw mp_reader_error("float expected, got " + mpuck_type_name(type), *this, prev_pos);
+            throw mp_reader_error("float expected, got " + mpuck_type_name(type), _mp, prev_pos);
         }
         else
         {
@@ -329,29 +854,86 @@ public:
             }
             else
             {
-                throw mp_reader_error("integer expected, got " + mpuck_type_name(type), *this, prev_pos);
+                throw mp_reader_error("integer expected, got " + mpuck_type_name(type), _mp, prev_pos);
             }
-            throw mp_reader_error("value overflow", *this);
+            throw mp_reader_error("value overflow", _mp);
         }
     }
 
     template <typename T>
-    mp_reader& operator>> (std::vector<T> &val);
+    mp_reader& operator>> (std::vector<T> &val)
+    {
+        auto arr = read<mp_reader<mp_array>>();
+        val.resize(arr.cardinality());
+        for (size_t i = 0; i < val.size(); ++i)
+            arr >> val[i];
+        return *this;
+    }
 
     template <typename KeyT, typename ValueT>
-    mp_reader& operator>> (std::map<KeyT, ValueT> &val);
+    mp_reader& operator>> (std::map<KeyT, ValueT> &val)
+    {
+        auto map = read<mp_reader<mp_map>>();
+        for (size_t i = 0; i < map.cardinality(); ++i)
+        {
+            KeyT k;
+            ValueT v;
+            map >> k >> v;
+            val[k] = std::move(v);
+        }
+        return *this;
+    }
 
     template <typename... Args>
-    mp_reader& operator>> (std::tuple<Args...> &val);
+    mp_reader& operator>> (std::tuple<Args...> &val)
+    {
+        auto arr = read<mp_reader<mp_array>>();
+        std::apply(
+            [&arr](auto&... item)
+            {
+                ((arr >> item), ...);
+            },
+            val
+            );
+        return *this;
+    }
 
     template <typename... Args>
-    mp_reader& operator>> (std::tuple<Args&...> val);
+    mp_reader& operator>> (std::tuple<Args&...> val)
+    {
+        auto arr = read<mp_reader<mp_array>>();
+        std::apply(
+            [&arr](auto&... item)
+            {
+                ((arr >> item), ...);
+            },
+            val
+            );
+        return *this;
+    }
 
-    mp_reader& operator>> (mp_reader &val)  = delete;
+    mp_reader& operator>> (mp_reader<mp_plain> &val)  = delete;
 
-    mp_reader& operator>> (mp_map_reader &val);
+    mp_reader& operator>> (mp_reader<mp_array> &val)
+    {
+        val._mp = mp_array(_current_pos);
+        val._current_pos = val._mp.begin;
+        val._current_ind = 0;
+        skip();
+        if (!val._mp.end)
+            val._mp.end = _current_pos;
+        return *this;
+    }
 
-    mp_reader& operator>> (mp_array_reader &val);
+    mp_reader& operator>> (mp_reader<mp_map> &val)
+    {
+        val._mp = mp_map(_current_pos);
+        val._current_pos = val._mp.begin;
+        val._current_ind = 0;
+        skip();
+        val._mp.end = _current_pos;
+        return *this;
+    }
 
     template <typename T>
     T read()
@@ -362,27 +944,11 @@ public:
     }
 
     template <size_t maxN>
-    mp_span<maxN> read()
+    const mp_span<maxN> read()
     {
         mp_span<maxN> dst{};
         *this >> dst;
         return dst;
-    }
-
-    template <typename T>
-    T read_or(T &&def)
-    {
-        if (_current_pos >= _end)
-        {
-            return def;
-        }
-        else if (mp_typeof(*_current_pos) == MP_NIL)
-        {
-            skip();
-            return def;
-        }
-
-        return read<T>();
     }
 
     template <typename... Args>
@@ -395,10 +961,13 @@ public:
     template <typename T>
     bool equals(const T &val) const
     {
+        if (!has_next())
+            throw mp_reader_error("read out of bounds", _mp);
         auto begin = _current_pos;
-        auto end = begin;
-        skip(&end);
-        mp_reader tmp(begin, end);
+        //auto end = begin;
+        //mp_next(&end);
+        //mp_reader tmp(begin, end);
+        mp_reader tmp(_current_pos);
 
         auto type = mp_typeof(*_current_pos);
         if constexpr (std::is_same_v<T, bool>)
@@ -451,210 +1020,59 @@ public:
         }
         else
         {
-            throw mp_reader_error("unsupported value type to compare with", *this);
+            throw mp_reader_error("unsupported value type to compare with", _mp);
         }
 
         return false;
     }
 
-protected:
-    const char *_begin = nullptr, *_end = nullptr, *_current_pos = nullptr;
 };
 
-/// messagepack map reader
-class mp_map_reader : public mp_reader
+template <size_t maxN>
+mp_span<maxN>::mp_span(const char *begin, const char *end) : mp_array(begin, end, 0)
 {
-public:
-    mp_map_reader() = default;
-    /// Return reader for the value with a specified key.
-    /// Current parsing position stays unchanged. Throws if the key is not found.
-    template <typename T>
-    mp_reader operator[](const T &key) const
-    {
-        mp_reader res = find(key);
-        if (!res)
-            throw mp_reader_error("key not found", *this);
-        return res;
-    }
-    /// Return reader for the value with a specified key.
-    /// Current parsing position stays unchanged. Returns empty reader if the key is not found.
-    template <typename T>
-    mp_reader find(const T &key) const
-    {
-        mp_reader tmp(_begin, _end); // to keep it const
-        auto n = _cardinality;
-        while (n-- > 0)
-        {
-            bool found = tmp.equals(key);
-            tmp.skip(); // skip a key
-
-            auto value_begin = tmp.pos();
-            tmp.skip();
-            auto value_end = tmp.pos();
-
-            if (found)
-                return {value_begin, value_end};
-        }
-        return {nullptr, nullptr};
-    }
-
-    /// The map's cardinality.
-    inline size_t cardinality() const noexcept
-    {
-        return _cardinality;
-    }
-
-private:
-    friend class mp_reader;
-    mp_map_reader(const char *begin, const char *end, size_t cardinality);
-    size_t _cardinality = 0;
-};
-
-/// messagepack array reader
-class mp_array_reader : public mp_reader
-{
-public:
-    mp_array_reader(const wtf_buffer &buf);
-    mp_array_reader(const char *begin, const char *end);
-    mp_array_reader() = default;
-
-    /// The array's cardinality.
-    inline size_t cardinality() const noexcept
-    {
-        return _cardinality;
-    }
-
-    using mp_reader::operator>>;
-
-    template <typename... Args>
-    mp_array_reader& values(Args&... args)
-    {
-        ((*this) >> ... >> args);
-        return *this;
-    }
-
-protected:
-    friend class mp_reader;
-    mp_array_reader(const char *begin, const char *end, size_t cardinality);
-    size_t _cardinality = 0;
-};
+    auto r = mp_reader{mp_plain{begin, end}};
+    r >> *this;
+}
 
 template <typename T>
-mp_reader& mp_reader::operator>> (std::vector<T> &val)
+mp_plain mp_map::find(const T &key) const
 {
-    mp_array_reader arr = read<mp_array_reader>();
-    val.resize(arr.cardinality());
-    for (size_t i = 0; i < val.size(); ++i)
-        arr >> val[i];
-    return *this;
-}
-
-template <typename KeyT, typename ValueT>
-mp_reader& mp_reader::operator>> (std::map<KeyT, ValueT> &val)
-{
-    mp_map_reader mp_map = read<mp_map_reader>();
-    for (size_t i = 0; i < mp_map.cardinality(); ++i)
+    auto tmp = mp_reader{mp_plain(begin, end)};
+    auto n = cardinality;
+    while (n-- > 0)
     {
-        KeyT k;
-        ValueT v;
-        mp_map >> k >> v;
-        val[k] = std::move(v);
+        bool found = tmp.equals(key);
+        tmp.skip(); // skip a key
+
+        auto value_begin = tmp.pos();
+        tmp.skip();
+        auto value_end = tmp.pos();
+
+        if (found)
+            return {value_begin, value_end};
     }
-    return *this;
+    return {nullptr, nullptr};
 }
 
-template <typename... Args>
-mp_reader& mp_reader::operator>> (std::tuple<Args...> &val)
+template <typename MP>
+std::string hex_dump_mp(const MP &mp, const char *pos)
 {
-    mp_array_reader arr = read<mp_array_reader>();
-    std::apply(
-        [&arr](auto&... item)
+    if (mp.begin)
+    {
+        if (mp.end)
+            return hex_dump(mp.begin, mp.end, pos);
+        if constexpr (requires {mp.cardinality;})
         {
-            ((arr >> item), ...);
-        },
-        val
-    );
-    return *this;
+            mp_reader tmp(mp);
+            for (size_t i = 0; i < mp.cardinality; ++i)
+                tmp.skip();
+            return hex_dump(mp.begin, tmp.pos(), pos);
+        }
+    }
+    return {};
 }
 
-template <typename... Args>
-mp_reader& mp_reader::operator>> (std::tuple<Args&...> val)
-{
-    mp_array_reader arr = read<mp_array_reader>();
-    std::apply(
-        [&arr](auto&... item)
-        {
-            ((arr >> item), ...);
-        },
-        val
-    );
-    return *this;
-}
-
-/// Msgpack span with extracted bounds of its items. Intended to be selectively streamed into mp_writer but
-/// may be used for fast multiple items access in a non-sequental manner.
-template <size_t maxN>
-class mp_span : public mp_array_reader
-{
-    friend class mp_reader;
-public:
-    mp_span() = default;
-    mp_span(const char *begin, const char *end) : mp_array_reader(begin, end, 0)
-    {
-        mp_reader r(begin, end);
-        r >> *this;
-    }
-
-    using mp_reader::operator>>;
-    using mp_array_reader::operator>>;
-
-    mp_span sub(size_t first_ind, size_t last_ind) const
-    {
-        if (first_ind > last_ind)
-            throw mp_reader_error("first_ind > last_ind", *this);
-        if (last_ind >= _cardinality)
-            throw mp_reader_error("read out of bounds", *this);
-        return mp_span<maxN>(_begin + (first_ind ? _rbounds[first_ind - 1] : 0),
-                             _begin + _rbounds[last_ind],
-                             last_ind - first_ind + 1,
-                             &_rbounds[first_ind]);
-    }
-
-    /// Return single value span for the specified item.
-    /// Current parsing position of underlying mp_reader (if somebody gonna use it within mp_span) stays unchanged.
-    mp_span operator[](size_t ind) const
-    {
-        return sub(ind, ind);
-    }
-
-    template <size_t maxArgN>
-    bool operator== (const mp_span<maxArgN>& s) const
-    {
-        if (*this && s && size() == s.size())
-            return memcmp(_begin, s.begin(), s.size()) == 0;
-        return false;
-    }
-
-private:
-    mp_span(const char *begin, const char *end, size_t cardinality, const uint32_t *first_rbound) : mp_array_reader(begin, end, cardinality)
-    {
-        std::copy(first_rbound, first_rbound + cardinality, (uint32_t*)_rbounds.data());
-    };
-    /// end of items offsets
-    std::array<uint32_t, maxN> _rbounds;
-};
-
-template <size_t N = 1>
-mp_reader::none_t<N> mp_none()
-{
-    return mp_reader::none_t<N>();
-}
-
-inline void mp_initialize()
-{
-    mp_reader::initialize();
-}
-
-#endif // MP_READER_H
-
-#endif
+using mp_plain_reader = mp_reader<mp_plain>;
+using mp_array_reader = mp_reader<mp_array>;
+using mp_map_reader = mp_reader<mp_map>;

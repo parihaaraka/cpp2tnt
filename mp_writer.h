@@ -111,7 +111,6 @@ public:
         return *this;
     }
 
-#ifndef OLD_MP_READER
     template<typename MP>
     inline mp_writer& operator<< (mp_reader<MP> &r)
     {
@@ -120,7 +119,6 @@ public:
         *this << mp_raw_view(begin, r.pos() - begin);
         return *this;
     }
-#endif
 
     inline mp_writer& operator<< (const mp_raw_view &val)
     {

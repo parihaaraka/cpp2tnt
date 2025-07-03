@@ -15,7 +15,6 @@ using namespace boost::ut;
 
 extern std::string hex_dump(const char *begin, const char *end, const char *pos);
 
-#ifndef OLD_MP_READER
 template <typename MP, typename T>
 typename std::enable_if_t<std::is_same_v<T, __int128_t>, mp_reader<MP>&>
 operator>> (mp_reader<MP>& r, T &val)
@@ -25,17 +24,6 @@ operator>> (mp_reader<MP>& r, T &val)
     r.skip();
     return r;
 }
-#else
-template <typename T>
-typename std::enable_if_t<std::is_same_v<T, __int128_t>, mp_reader&>
-operator>> (mp_reader& r, T &val)
-{
-    // dummy - just to test external operator overloading
-    val = 0;
-    r.skip();
-    return r;
-}
-#endif
 
 void throw_if_error(const mp_map_reader &header, const mp_map_reader &body)
 {
@@ -163,7 +151,6 @@ int main(int argc, char *argv[])
         expect(ret_items.read<bool>() == true);
     };
 
-#ifndef OLD_MP_READER
     "mp_array_reader"_test = [] {
         auto mp = hex2bin("0102030405");
         auto r = mp_array_reader(mp.data(), 5);
@@ -173,7 +160,6 @@ int main(int argc, char *argv[])
         expect(r == true);
         expect(r.read_or<int>(1) == 1);
     };
-#endif
 
     scope s = run_loop();
     bool connected = open_tnt_connection(argc > 1 ? argv[1] : "localhost:3301");
