@@ -150,6 +150,20 @@ mp_writer &mp_writer::operator<<(nullptr_t)
     return *this;
 }
 
+void mp_writer::set_state(const state &state)
+{
+    if (_buf.capacity() >= state.content_len)
+        _buf.end = _buf.data() + state.content_len;
+    else
+        throw std::overflow_error("destination buffer was truncated");
+    _opened_containers = state.opened_containers;
+}
+
+mp_writer::state mp_writer::get_state()
+{
+    return state{_buf.size(), _opened_containers};
+}
+
 mp_writer& mp_writer::operator<<(const string_view &val)
 {
     if (val.data() == nullptr)

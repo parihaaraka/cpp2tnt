@@ -331,18 +331,8 @@ public:
     };
 
     /// Save mp_writer state and restore it with `set_state()` to undo some last writes.
-    state get_state()
-    {
-        return state{_buf.size(), _opened_containers};
-    }
-    void set_state(const state &state)
-    {
-        if (_buf.capacity() >= state.content_len)
-            _buf.end = _buf.data() + state.content_len;
-        else
-            throw std::overflow_error("destination buffer was truncated");
-        _opened_containers = state.opened_containers;
-    }
+    state get_state();
+    void set_state(const state &state);
 };
 
 template <size_t S>
