@@ -33,7 +33,7 @@ std::string hex_dump(const char *begin, const char *end, const char *pos)
     return res;
 }
 
-std::string get_trace(void)
+std::string get_trace()
 {
     void *array[10];
     const size_t size = backtrace(array, 10);
@@ -42,8 +42,9 @@ std::string get_trace(void)
         return "unable to acquire backtrace symbols";
     std::unique_ptr<char*, void(*)(char**)> sguard(strings, [](char **s) { free(s); });
 
+    std::string error;
     std::stringstream s;
-    // skip first, as it is this handler
+    // skip this handler
     for (size_t i = 1; i < size; i++)
     {
         // extract the exe name
@@ -80,24 +81,29 @@ std::string get_trace(void)
         }
 
         s << '[' << i << "]: " << strings[i];
-        if (!exe.empty() && !addr.empty())
+        if (error.empty() && !exe.empty() && !addr.empty())
         {
             char cmd[1024];
-            sprintf(cmd, "addr2line -s -a -p -f -C -e %s %s", exe.c_str(), addr.c_str());
+            sprintf(cmd, "addr2line -s -a -p -f -C -e %s %s 2>&1", exe.c_str(), addr.c_str());
             std::array<char, 128> buffer;
             std::string placement;
-            std::unique_ptr<FILE, void(*)(FILE*)> pipe(popen(cmd, "r"),
-                [](FILE * f) -> void
-                {
-                    // wrapper to ignore the return value from pclose() is needed with newer versions of gnu g++
-                    std::ignore = pclose(f);
-                });
+            int stat = 0;
+            int wstat = 0;
+            auto deleter = [&error, &stat, &wstat](FILE * f)
+            {
+                stat = pclose(f);
+                wstat = WEXITSTATUS(stat);
+            };
+            std::unique_ptr<FILE, decltype(deleter)> pipe(popen(cmd, "r"), deleter);
             if (pipe)
             {
                 while (fgets(buffer.data(), static_cast<int>(buffer.size()), pipe.get()) != nullptr)
                     placement += buffer.data();
 
-                if (!placement.empty())
+                pipe.release();
+                if (stat < 0 || (wstat != 0 && wstat != 128 + 13/*SIGPIPE*/))
+                    error = placement;
+                else if (!placement.empty())
                     s << " -> " << placement;
                 else
                     s << "\n";
@@ -108,6 +114,9 @@ std::string get_trace(void)
             s << "\n";
         }
     }
+
+    if (!error.empty())
+        s << "\n" << error;
 
     return s.str();
 }

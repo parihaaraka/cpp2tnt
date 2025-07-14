@@ -46,10 +46,13 @@ void mp_writer::finalize()
 
         if (actual_cardinality > c.max_cardinality && mp_sizeof_array(actual_cardinality) > max_num_bytes)
             throw overflow_error("array header size exceeded");
+            //throw overflow_error(std::format("array header size exceeded ({} of {})\n{}\n{}",
+            //             actual_cardinality, c.max_cardinality,
+            //             get_trace(), hex_dump(_buf.data(), _buf.end, head)));
 
         if (max_num_bytes == 1)
         {
-            // replace 1-byte header with new size
+            // replace 1-byte header with the new size
             mp_encode_array(head, actual_cardinality);
             return;
         }

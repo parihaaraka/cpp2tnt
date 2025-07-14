@@ -513,6 +513,8 @@ public:
     {
         if (_mp.end)
             return _current_pos && _current_pos < _mp.end;
+        else if (!_mp.begin)
+            return false;
         if constexpr (requires {_mp.cardinality;})
         {
             if constexpr (std::is_same<MP, mp_map>::value)
@@ -524,7 +526,8 @@ public:
         // allow to read at one's risk
         if (!strict)
             return true;
-        throw mp_reader_error("unable to determine if next value exists - no right bound specified", _mp, _current_pos);
+        throw mp_reader_error("unable to determine if next value exists - no right bound specified",
+                              _mp, _current_pos);
     }
 
     /// true if not empty
