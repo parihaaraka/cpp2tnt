@@ -416,6 +416,8 @@ public:
     /// Skip current encoded item and ensure it has expected type.
     mp_reader& skip(mp_type type, bool nullable = false)
     {
+        if (!_current_pos)
+            throw std::runtime_error("no msgpack data to read");
         auto actual_type = mp_typeof(*_current_pos);
         if (actual_type != type && (!nullable || actual_type != MP_NIL))
             throw mp_reader_error(mpuck_type_name(type) + " expected, got " + mpuck_type_name(actual_type), _mp, _current_pos);
@@ -582,6 +584,9 @@ public:
 
     mp_reader& operator>> (std::string &val)
     {
+        if (!_current_pos)
+            throw std::runtime_error("no msgpack data to read");
+
         if (mp_typeof(*_current_pos) == MP_EXT)
         {
             // regular print
@@ -641,6 +646,8 @@ public:
 
     mp_reader& operator>> (bool &val)
     {
+        if (!_current_pos)
+            throw std::runtime_error("no msgpack data to read");
         const char *data = _current_pos;
         auto type = mp_typeof(*data);
         if (type != MP_BOOL)
@@ -677,6 +684,8 @@ public:
     template <typename C, typename D>
     mp_reader& operator>> (std::chrono::time_point<C, D> &val)
     {
+        if (!_current_pos)
+            throw std::runtime_error("no msgpack data to read");
         using namespace std::chrono;
         auto type = mp_typeof(*_current_pos);
         switch (type) {
