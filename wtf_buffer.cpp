@@ -43,7 +43,7 @@ size_t wtf_buffer::size() const noexcept
     return end - head;
 }
 
-size_t wtf_buffer::available() const noexcept
+int64_t wtf_buffer::available() const noexcept
 {
     return end_of_storage - end;
 }

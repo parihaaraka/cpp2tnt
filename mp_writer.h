@@ -145,6 +145,7 @@ public:
         if (!val.has_value())
         {
             _buf.end = mp_encode_nil(_buf.end);
+            assert(_buf.available() >= 0);
 
             if (!_opened_containers.empty())
                 ++_opened_containers.top().items_count;
@@ -180,6 +181,7 @@ public:
                         mp_encode_int(_buf.end, val));
         }
 
+        assert(_buf.available() >= 0);
         if (!_opened_containers.empty())
             ++_opened_containers.top().items_count;
         return *this;
@@ -206,6 +208,7 @@ public:
         else
             static_assert(!sizeof(T), "unsupported size");
 
+        assert(_buf.available() >= 0);
         if (!_opened_containers.empty())
             ++_opened_containers.top().items_count;
         return *this;

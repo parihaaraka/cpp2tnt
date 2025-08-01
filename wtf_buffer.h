@@ -21,7 +21,7 @@ public:
 
     size_t capacity() const noexcept;
     size_t size() const noexcept;
-    size_t available() const noexcept;
+    int64_t available() const noexcept;
     char* data() noexcept;
     const char* data() const noexcept;
     void reserve(size_t size);

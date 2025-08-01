@@ -12,6 +12,7 @@ void mp_writer::begin_array(uint32_t max_cardinality)
 
     _opened_containers.push({_buf.size(), max_cardinality});
     _buf.end = mp_encode_array(_buf.end, max_cardinality);
+    assert(_buf.available() >= 0);
 }
 
 void mp_writer::begin_map(uint32_t max_cardinality)
@@ -19,6 +20,7 @@ void mp_writer::begin_map(uint32_t max_cardinality)
     increment_container_counter();
     _opened_containers.push({_buf.size(), max_cardinality});
     _buf.end = mp_encode_map(_buf.end, max_cardinality);
+    assert(_buf.available() >= 0);
 }
 
 void mp_writer::finalize()
@@ -143,6 +145,7 @@ mp_writer &mp_writer::fill(mp_raw_view items_to_fill, uint32_t target_items_coun
         else
             break;  // if target_items_count % items_to_fill.cardinality != 0
     }
+    assert(_buf.available() >= 0);
     return *this;
 }
 
@@ -150,6 +153,7 @@ mp_writer &mp_writer::operator<<(nullptr_t)
 {
     _buf.end = mp_encode_nil(_buf.end);
     increment_container_counter();
+    assert(_buf.available() >= 0);
     return *this;
 }
 
@@ -176,6 +180,7 @@ mp_writer& mp_writer::operator<<(const string_view &val)
     else
         _buf.end = mp_encode_str(_buf.end, val.data(), static_cast<uint32_t>(val.size()));
 
+    assert(_buf.available() >= 0);
     increment_container_counter();
     return *this;
 }
@@ -185,5 +190,6 @@ mp_writer& mp_writer::operator<<(const mp_plain &src)
     mp_reader r(src);
     while (r.has_next(true))
         *this << r;
+    assert(_buf.available() >= 0);
     return *this;
 }
