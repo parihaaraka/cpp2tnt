@@ -4,23 +4,23 @@
 
 using namespace std;
 
-mp_writer::mp_writer(wtf_buffer &buf) : _buf(buf) {}
+mp_writer::mp_writer(wtf_buffer &buf) : _buf(&buf) {}
 
 void mp_writer::begin_array(uint32_t max_cardinality)
 {
     increment_container_counter();
 
-    _opened_containers.push({_buf.size(), max_cardinality});
-    _buf.end = mp_encode_array(_buf.end, max_cardinality);
-    assert(_buf.available() >= 0);
+    _opened_containers.push({_buf->size(), max_cardinality});
+    _buf->end = mp_encode_array(_buf->end, max_cardinality);
+    assert(_buf->available() >= 0);
 }
 
 void mp_writer::begin_map(uint32_t max_cardinality)
 {
     increment_container_counter();
-    _opened_containers.push({_buf.size(), max_cardinality});
-    _buf.end = mp_encode_map(_buf.end, max_cardinality);
-    assert(_buf.available() >= 0);
+    _opened_containers.push({_buf->size(), max_cardinality});
+    _buf->end = mp_encode_map(_buf->end, max_cardinality);
+    assert(_buf->available() >= 0);
 }
 
 void mp_writer::finalize()
@@ -29,7 +29,7 @@ void mp_writer::finalize()
         throw range_error("no container to finalize");
 
     auto &c = _opened_containers.pop();
-    char *head = _buf.data() + c.head_offset;
+    char *head = _buf->data() + c.head_offset;
 
     // mp_encode_array() may reduce header's size if actual cardinality
     // is smaller than initial value, so we update the header directly
@@ -50,7 +50,7 @@ void mp_writer::finalize()
             throw overflow_error("array header size exceeded");
             //throw overflow_error(std::format("array header size exceeded ({} of {})\n{}\n{}",
             //             actual_cardinality, c.max_cardinality,
-            //             get_trace(), hex_dump(_buf.data(), _buf.end, head)));
+            //             get_trace(), hex_dump(_buf->data(), _buf->end, head)));
 
         if (max_num_bytes == 1)
         {
@@ -114,8 +114,8 @@ void mp_writer::increment_container_counter(size_t items_added)
 void mp_writer::write(const char *begin, const char *end, size_t cardinality)
 {
     // make sure the destination has free space
-    auto dst = _buf.end;
-    _buf.resize(_buf.size() + end - begin);
+    auto dst = _buf->end;
+    _buf->resize(_buf->size() + end - begin);
     std::copy(begin, end, dst);
 
     if (!_opened_containers.empty())
@@ -145,22 +145,22 @@ mp_writer &mp_writer::fill(mp_raw_view items_to_fill, uint32_t target_items_coun
         else
             break;  // if target_items_count % items_to_fill.cardinality != 0
     }
-    assert(_buf.available() >= 0);
+    assert(_buf->available() >= 0);
     return *this;
 }
 
 mp_writer &mp_writer::operator<<(nullptr_t)
 {
-    _buf.end = mp_encode_nil(_buf.end);
+    _buf->end = mp_encode_nil(_buf->end);
     increment_container_counter();
-    assert(_buf.available() >= 0);
+    assert(_buf->available() >= 0);
     return *this;
 }
 
 void mp_writer::set_state(const state &state)
 {
-    if (_buf.capacity() >= state.content_len)
-        _buf.end = _buf.data() + state.content_len;
+    if (_buf->capacity() >= state.content_len)
+        _buf->end = _buf->data() + state.content_len;
     else
         throw std::overflow_error("destination buffer was truncated");
     _opened_containers = state.opened_containers;
@@ -168,19 +168,19 @@ void mp_writer::set_state(const state &state)
 
 mp_writer::state mp_writer::get_state()
 {
-    return state{_buf.size(), _opened_containers};
+    return state{_buf->size(), _opened_containers};
 }
 
 mp_writer& mp_writer::operator<<(const string_view &val)
 {
     if (val.data() == nullptr)
-        _buf.end = mp_encode_nil(_buf.end);
+        _buf->end = mp_encode_nil(_buf->end);
     else if (val.size() > std::numeric_limits<uint32_t>::max())
         throw overflow_error("too long string");
     else
-        _buf.end = mp_encode_str(_buf.end, val.data(), static_cast<uint32_t>(val.size()));
+        _buf->end = mp_encode_str(_buf->end, val.data(), static_cast<uint32_t>(val.size()));
 
-    assert(_buf.available() >= 0);
+    assert(_buf->available() >= 0);
     increment_container_counter();
     return *this;
 }
@@ -190,6 +190,6 @@ mp_writer& mp_writer::operator<<(const mp_plain &src)
     mp_reader r(src);
     while (r.has_next(true))
         *this << r;
-    assert(_buf.available() >= 0);
+    assert(_buf->available() >= 0);
     return *this;
 }

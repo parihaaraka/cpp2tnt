@@ -37,7 +37,7 @@ public:
     char *end; // let msgpuck to write directly
 
 private:
-    // to avoid teplating to preserve old code compatibility and stay simple
+    // to avoid templating to preserve old code compatibility and stay simple
     // due to single type (two random buffers have the same type => simple move, swap, etc)
     std::variant<fu2::unique_function<char*(size_t)>, std::vector<char>*, std::vector<char>> target;
     char *head = nullptr;

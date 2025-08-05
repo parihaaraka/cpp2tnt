@@ -40,13 +40,13 @@ void iproto_writer::start_message()
     finalize_all();
 
     // ensure we have 1kb free (make prereserve manually if you need some more)
-    if (_buf.capacity() - _buf.size() < 1024)
-        _buf.reserve(static_cast<size_t>(_buf.capacity() + 1024));
+    if (_buf->capacity() - _buf->size() < 1024)
+        _buf->reserve(static_cast<size_t>(_buf->capacity() + 1024));
 
-    size_t head_offset = _buf.size();
+    size_t head_offset = _buf->size();
     _opened_containers.push({head_offset, std::numeric_limits<uint32_t>::max()});
-    mp_store_u8(_buf.end, 0xce); // 0xce -> unit32 (place now to distinguish request header and containers)
-    _buf.end += 5;
+    mp_store_u8(_buf->end, 0xce); // 0xce -> unit32 (place now to distinguish request header and containers)
+    _buf->end += 5;
 }
 
 void iproto_writer::finalize()
@@ -55,12 +55,12 @@ void iproto_writer::finalize()
         throw std::range_error("no request to finalize");
 
     auto &c = _opened_containers.top();
-    char *head = _buf.data() + c.head_offset;
+    char *head = _buf->data() + c.head_offset;
 
     if (static_cast<uint8_t>(*head) == 0xce)  // request head
     {
         _opened_containers.pop();
-        size_t size = static_cast<size_t>(_buf.end - head);
+        size_t size = static_cast<size_t>(_buf->end - head);
         if (!size)
             return;
 
@@ -82,43 +82,43 @@ void iproto_writer::finalize_all()
 void iproto_writer::encode_request_header(request_type req_type)
 {
     start_message();
-    _buf.end = mp_encode_map(_buf.end, 2);
-    _buf.end = mp_encode_uint(mp_encode_uint(_buf.end, tnt::header_field::CODE), static_cast<uint8_t>(req_type));
-    _buf.end = mp_encode_uint(mp_encode_uint(_buf.end, tnt::header_field::SYNC), get_request_id());
+    _buf->end = mp_encode_map(_buf->end, 2);
+    _buf->end = mp_encode_uint(mp_encode_uint(_buf->end, tnt::header_field::CODE), static_cast<uint8_t>(req_type));
+    _buf->end = mp_encode_uint(mp_encode_uint(_buf->end, tnt::header_field::SYNC), get_request_id());
 }
 
 void iproto_writer::encode_response_header(uint32_t error_code, uint64_t schema_version)
 {
     uint32_t code = error_code ? 0x8000 | error_code : static_cast<uint32_t>(request_type::OK);
     start_message();
-    _buf.end = mp_encode_map(_buf.end, 3);
-    _buf.end = mp_encode_uint(mp_encode_uint(_buf.end, tnt::header_field::CODE), code);
-    _buf.end = mp_encode_uint(mp_encode_uint(_buf.end, tnt::header_field::SYNC), get_request_id());
-    _buf.end = mp_encode_uint(mp_encode_uint(_buf.end, tnt::header_field::SCHEMA_ID), schema_version);
+    _buf->end = mp_encode_map(_buf->end, 3);
+    _buf->end = mp_encode_uint(mp_encode_uint(_buf->end, tnt::header_field::CODE), code);
+    _buf->end = mp_encode_uint(mp_encode_uint(_buf->end, tnt::header_field::SYNC), get_request_id());
+    _buf->end = mp_encode_uint(mp_encode_uint(_buf->end, tnt::header_field::SCHEMA_ID), schema_version);
 }
 
 void iproto_writer::encode_auth_request(const char* greeting, std::string_view user, std::string_view password, std::string_view auth_proto)
 {
     encode_request_header(tnt::request_type::AUTH);
 
-    _buf.end = mp_encode_map(_buf.end, 2);
-    _buf.end = mp_encode_strl(mp_encode_uint(_buf.end, tnt::body_field::USER_NAME),
+    _buf->end = mp_encode_map(_buf->end, 2);
+    _buf->end = mp_encode_strl(mp_encode_uint(_buf->end, tnt::body_field::USER_NAME),
                               static_cast<uint32_t>(user.size()));
-    memcpy(_buf.end, user.data(), user.size());
-    _buf.end += user.size();
+    memcpy(_buf->end, user.data(), user.size());
+    _buf->end += user.size();
 
-    _buf.end = mp_encode_uint(_buf.end, tnt::body_field::TUPLE);
+    _buf->end = mp_encode_uint(_buf->end, tnt::body_field::TUPLE);
     std::string_view b64_salt = {
         greeting + tnt::VERSION_SIZE,
         tnt::SCRAMBLE_SIZE + tnt::SALT_SIZE
     };
     char salt[64];
-    _buf.end = mp_encode_array(_buf.end, 2);
-    _buf.end = mp_encode_str(_buf.end, auth_proto.data(), auth_proto.size());
-    _buf.end = mp_encode_strl(_buf.end, tnt::SCRAMBLE_SIZE);
+    _buf->end = mp_encode_array(_buf->end, 2);
+    _buf->end = mp_encode_str(_buf->end, auth_proto.data(), auth_proto.size());
+    _buf->end = mp_encode_strl(_buf->end, tnt::SCRAMBLE_SIZE);
     base64_decode(b64_salt.data(), tnt::SALT_SIZE, salt, 64);
-    scramble_prepare(_buf.end, salt, password);
-    _buf.end += tnt::SCRAMBLE_SIZE;
+    scramble_prepare(_buf->end, salt, password);
+    _buf->end += tnt::SCRAMBLE_SIZE;
 
     finalize();
 }
@@ -126,25 +126,25 @@ void iproto_writer::encode_auth_request(const char* greeting, std::string_view u
 void iproto_writer::encode_id_request(proto_id proto)
 {
     encode_request_header(tnt::request_type::PROTO_ID);
-    _buf.end = mp_encode_map(_buf.end, 1 + (proto.version ? 1 : 0) + (proto.auth.empty() ? 0 : 1));
+    _buf->end = mp_encode_map(_buf->end, 1 + (proto.version ? 1 : 0) + (proto.auth.empty() ? 0 : 1));
 
     if (proto.version)
     {
-        _buf.end = mp_encode_uint(_buf.end, tnt::body_field::VERSION);
-        _buf.end = mp_encode_uint(_buf.end, proto.version);
+        _buf->end = mp_encode_uint(_buf->end, tnt::body_field::VERSION);
+        _buf->end = mp_encode_uint(_buf->end, proto.version);
     }
 
     auto features = proto.list_features();
-    _buf.end = mp_encode_uint(_buf.end, tnt::body_field::FEATURES);
-    _buf.end = mp_encode_array(_buf.end, features.size());
+    _buf->end = mp_encode_uint(_buf->end, tnt::body_field::FEATURES);
+    _buf->end = mp_encode_array(_buf->end, features.size());
     // actually we could memcpy features as is
     for (auto &f: features)
-        _buf.end = mp_encode_uint(_buf.end, f);
+        _buf->end = mp_encode_uint(_buf->end, f);
 
     if (!proto.auth.empty())
     {
-        _buf.end = mp_encode_uint(_buf.end, tnt::body_field::AUTH_TYPE);
-        _buf.end = mp_encode_str(_buf.end, proto.auth.data(), proto.auth.size());
+        _buf->end = mp_encode_uint(_buf->end, tnt::body_field::AUTH_TYPE);
+        _buf->end = mp_encode_str(_buf->end, proto.auth.data(), proto.auth.size());
     }
     finalize();
 }
@@ -152,7 +152,7 @@ void iproto_writer::encode_id_request(proto_id proto)
 void iproto_writer::encode_ping_request()
 {
     encode_request_header(tnt::request_type::PING);
-    _buf.end = mp_encode_map(_buf.end, 0);
+    _buf->end = mp_encode_map(_buf->end, 0);
     finalize();
 }
 
@@ -160,10 +160,10 @@ void iproto_writer::begin_call(std::string_view fn_name)
 {
     encode_request_header(tnt::request_type::CALL);
 
-    _buf.end = mp_encode_map(_buf.end, 2);
-    _buf.end = mp_encode_uint(_buf.end, tnt::body_field::FUNCTION_NAME);
-    _buf.end = mp_encode_str(_buf.end, fn_name.data(), static_cast<uint32_t>(fn_name.size()));
-    _buf.end = mp_encode_uint(_buf.end, tnt::body_field::TUPLE);
+    _buf->end = mp_encode_map(_buf->end, 2);
+    _buf->end = mp_encode_uint(_buf->end, tnt::body_field::FUNCTION_NAME);
+    _buf->end = mp_encode_str(_buf->end, fn_name.data(), static_cast<uint32_t>(fn_name.size()));
+    _buf->end = mp_encode_uint(_buf->end, tnt::body_field::TUPLE);
     // a caller must append an array of arguments (zero-length one if void)
 }
 
@@ -171,10 +171,10 @@ void iproto_writer::begin_eval(std::string_view script)
 {
     encode_request_header(tnt::request_type::EVAL);
 
-    _buf.end = mp_encode_map(_buf.end, 2);
-    _buf.end = mp_encode_uint(_buf.end, tnt::body_field::EXPRESSION);
-    _buf.end = mp_encode_str(_buf.end, script.data(), static_cast<uint32_t>(script.size()));
-    _buf.end = mp_encode_uint(_buf.end, tnt::body_field::TUPLE);
+    _buf->end = mp_encode_map(_buf->end, 2);
+    _buf->end = mp_encode_uint(_buf->end, tnt::body_field::EXPRESSION);
+    _buf->end = mp_encode_str(_buf->end, script.data(), static_cast<uint32_t>(script.size()));
+    _buf->end = mp_encode_uint(_buf->end, tnt::body_field::TUPLE);
     // a caller must append an array of arguments (zero-length one if void)
 }
 

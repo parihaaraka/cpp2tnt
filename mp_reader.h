@@ -387,6 +387,18 @@ public:
         return _mp.cardinality;
     }
 
+    /// Try to skip `max` items, return actual items skipped.
+    bool skip(size_t max)
+    {
+        for (size_t i = 0; i < max; ++i)
+        {
+            if (!has_next())
+                return false;
+            skip();
+        }
+        return true;
+    }
+
     /// Skip current encoded item (in case of array/map skips all its elements).
     mp_reader& skip()
     {

@@ -93,14 +93,14 @@ public:
     /// Fill current container with `items_to_fill` up to `target_items_count` (as close as possible)
     mp_writer& fill(mp_raw_view items_to_fill, uint32_t target_items_count);
 
-    inline operator const wtf_buffer&() const noexcept { return _buf; }
-    inline wtf_buffer& buf() const noexcept { return _buf; }
+    inline operator const wtf_buffer&() const noexcept { return *_buf; }
+    inline wtf_buffer& buf() const noexcept { return *_buf; }
 
     /// clear output buffer and reset current position on its head (for fast buffer reuse)
     inline void reset()
     {
         _opened_containers.clear();
-        _buf.clear();
+        _buf->clear();
     }
 
     mp_writer& operator<< (std::nullptr_t);
@@ -144,8 +144,8 @@ public:
     {
         if (!val.has_value())
         {
-            _buf.end = mp_encode_nil(_buf.end);
-            assert(_buf.available() >= 0);
+            _buf->end = mp_encode_nil(_buf->end);
+            assert(_buf->available() >= 0);
 
             if (!_opened_containers.empty())
                 ++_opened_containers.top().items_count;
@@ -163,25 +163,25 @@ public:
     {
         if constexpr (std::is_same_v<T, bool>)
         {
-            _buf.end = mp_encode_bool(_buf.end, val);
+            _buf->end = mp_encode_bool(_buf->end, val);
         }
         else if constexpr (std::is_floating_point_v<T>)
         {
             if constexpr (sizeof(T) <= 4)
-                _buf.end = mp_encode_float(_buf.end, val);
+                _buf->end = mp_encode_float(_buf->end, val);
             else if (!std::isfinite(val) || (val <= std::numeric_limits<double>::max() && val >= std::numeric_limits<double>::min()))
-                _buf.end = mp_encode_double(_buf.end, static_cast<double>(val));
+                _buf->end = mp_encode_double(_buf->end, static_cast<double>(val));
             else
                 throw std::overflow_error("unable to fit floating point value into msgpack");
         }
         else
         {
-            _buf.end = (val >= 0 ?
-                        mp_encode_uint(_buf.end, static_cast<uint64_t>(val)) :
-                        mp_encode_int(_buf.end, val));
+            _buf->end = (val >= 0 ?
+                        mp_encode_uint(_buf->end, static_cast<uint64_t>(val)) :
+                        mp_encode_int(_buf->end, val));
         }
 
-        assert(_buf.available() >= 0);
+        assert(_buf->available() >= 0);
         if (!_opened_containers.empty())
             ++_opened_containers.top().items_count;
         return *this;
@@ -192,23 +192,23 @@ public:
     {
         if constexpr (sizeof(T) == 2)
         {
-            _buf.end = mp_store_u8(_buf.end, 0xcd);
-            _buf.end = mp_store_u16(_buf.end, uint16_t(val.value));
+            _buf->end = mp_store_u8(_buf->end, 0xcd);
+            _buf->end = mp_store_u16(_buf->end, uint16_t(val.value));
         }
         else if constexpr (sizeof(T) == 4)
         {
-            _buf.end = mp_store_u8(_buf.end, 0xce);
-            _buf.end = mp_store_u32(_buf.end, uint32_t(val.value));
+            _buf->end = mp_store_u8(_buf->end, 0xce);
+            _buf->end = mp_store_u32(_buf->end, uint32_t(val.value));
         }
         else if constexpr (sizeof(T) == 8)
         {
-            _buf.end = mp_store_u8(_buf.end, 0xcf);
-            _buf.end = mp_store_u64(_buf.end, uint64_t(val.value));
+            _buf->end = mp_store_u8(_buf->end, 0xcf);
+            _buf->end = mp_store_u64(_buf->end, uint64_t(val.value));
         }
         else
             static_assert(!sizeof(T), "unsupported size");
 
-        assert(_buf.available() >= 0);
+        assert(_buf->available() >= 0);
         if (!_opened_containers.empty())
             ++_opened_containers.top().items_count;
         return *this;
@@ -321,7 +321,7 @@ protected:
     };
 
     wtf_stack<container_meta> _opened_containers;
-    wtf_buffer &_buf;
+    wtf_buffer *_buf;
 
 public:
     struct state
@@ -345,6 +345,19 @@ public:
     using mp_writer::mp_writer;
     constexpr mp_stack_writer() : mp_writer(wbuf), wbuf(_buf, S) {}
     mp_stack_writer(wtf_buffer &buf) = delete;
+    mp_stack_writer& operator=(const mp_stack_writer &w)
+    {
+        std::copy(w._buf, w._buf + S, _buf);
+        wbuf = wtf_buffer(_buf, S);
+        wbuf.end = wbuf.data() + w.wbuf.size();
+        mp_writer::_buf = &wbuf;
+        _opened_containers = w._opened_containers;
+        return *this;
+    }
+    mp_stack_writer(const mp_stack_writer &w) : mp_stack_writer()
+    {
+        mp_stack_writer::operator=(w);
+    }
     const char* data() const
     {
         return _buf;
